@@ -1,1 +1,3 @@
-my name is azaz 
+# ExpenseNest
+
+My name is Azaz Khan
