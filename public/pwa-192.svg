@@ -1,5 +1,25 @@
+
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="110" fill="#0f172a"/>
-  <rect x="116" y="116" width="280" height="280" rx="55" fill="#14b8a6"/>
-  <path d="M190 256h132M256 190v132" stroke="#ffffff" stroke-width="28" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#142b50"/>
+      <stop offset="100%" stop-color="#020817"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#00e6bd"/>
+      <stop offset="100%" stop-color="#55e82c"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="100" fill="url(#bg)"/>
+  <circle cx="256" cy="220" r="166" fill="none" stroke="url(#green)" stroke-width="12"/>
+  <path d="M145 190 L270 115 Q285 106 294 122 L320 160 L165 235Z" fill="url(#green)"/>
+  <path d="M130 205 Q130 185 155 185 H340 Q365 185 365 210 V330 Q365 350 345 350 H155 Q130 350 130 330Z" fill="#fff"/>
+  <path d="M130 235 H350 Q370 235 370 255 V285 H310 Q270 285 270 315 Q270 345 310 345 H350" fill="none" stroke="#10213c" stroke-width="15"/>
+  <circle cx="315" cy="315" r="12" fill="#00c98d"/>
+  <rect x="155" y="285" width="27" height="55" rx="7" fill="url(#green)"/>
+  <rect x="192" y="260" width="27" height="80" rx="7" fill="url(#green)"/>
+  <rect x="229" y="235" width="27" height="105" rx="7" fill="url(#green)"/>
+  <text x="256" y="420" text-anchor="middle" font-size="57" font-weight="bold" font-family="Arial">
+    <tspan fill="#fff">Expense</tspan><tspan fill="#55e82c">Nest</tspan>
+  </text>
 </svg>
