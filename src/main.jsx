@@ -1,6 +1,14 @@
+
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.jsx';
+import { Analytics } from '@vercel/analytics/react';
+
+import AuthenticatedApp from './AuthenticatedApp.jsx';
 import './style.css';
 
-createRoot(document.getElementById('root')).render(<StrictMode><App /></StrictMode>);
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <AuthenticatedApp />
+    <Analytics />
+  </StrictMode>
+);
