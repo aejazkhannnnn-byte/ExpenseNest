@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from './supabase';
 
@@ -31,22 +30,20 @@ export default function Auth({ onAuthSuccess }) {
 
     try {
       if (isLogin) {
-        const { data, error } =
-          await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password,
-          });
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
 
         if (error) throw error;
 
         setMessage('Login successful!');
         onAuthSuccess?.(data.user);
       } else {
-        const { data, error } =
-          await supabase.auth.signUp({
-            email: email.trim(),
-            password,
-          });
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+        });
 
         if (error) throw error;
 
@@ -54,17 +51,13 @@ export default function Auth({ onAuthSuccess }) {
           setMessage('Account created successfully!');
           onAuthSuccess?.(data.user);
         } else {
-          setMessage(
-            'Account created. Please login to continue.'
-          );
+          setMessage('Account created. Please login to continue.');
           setIsLogin(true);
           setPassword('');
         }
       }
     } catch (err) {
-      setError(
-        err.message || 'Something went wrong. Please try again.'
-      );
+      setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -82,14 +75,12 @@ export default function Auth({ onAuthSuccess }) {
     setResetLoading(true);
 
     try {
-      const { error } =
-        await supabase.auth.resetPasswordForEmail(
-          email.trim(),
-          {
-            redirectTo:
-              'https://expense-nest-opal.vercel.app',
-          }
-        );
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        {
+          redirectTo: 'https://expense-nest-opal.vercel.app',
+        }
+      );
 
       if (error) throw error;
 
@@ -117,7 +108,6 @@ export default function Auth({ onAuthSuccess }) {
       <div className="auth-decoration auth-decoration-two"></div>
 
       <div className="auth-card">
-
         <div className="auth-brand">
           <div className="auth-logo">₹</div>
           <span>ExpenseNest</span>
@@ -127,7 +117,6 @@ export default function Auth({ onAuthSuccess }) {
           <h1>
             {isLogin ? 'Welcome Back!' : 'Create Your Account'}
           </h1>
-
           <p>
             {isLogin
               ? 'Sign in to manage your money smarter.'
@@ -158,13 +147,10 @@ export default function Auth({ onAuthSuccess }) {
         </div>
 
         <form onSubmit={handleSubmit}>
-
           <div className="auth-field">
             <label>Email Address</label>
-
             <div className="auth-input-wrap">
               <span className="auth-input-icon">✉</span>
-
               <input
                 type="email"
                 placeholder="Enter your email"
@@ -187,9 +173,7 @@ export default function Auth({ onAuthSuccess }) {
                   onClick={handleForgotPassword}
                   disabled={resetLoading}
                 >
-                  {resetLoading
-                    ? 'Sending...'
-                    : 'Forgot Password?'}
+                  {resetLoading ? 'Sending...' : 'Forgot Password?'}
                 </button>
               )}
             </div>
@@ -251,7 +235,6 @@ export default function Auth({ onAuthSuccess }) {
                 ? 'Login to ExpenseNest →'
                 : 'Create My Account →'}
           </button>
-
         </form>
 
         <div className="auth-switch">
@@ -269,78 +252,81 @@ export default function Auth({ onAuthSuccess }) {
           Your financial information is protected.
         </div>
 
+        {/* ADMIN LOGIN LINK */}
+        <div className="auth-admin-link">
+          <span>🛡️</span>
+          <a href="/admin">Admin Login</a>
+        </div>
       </div>
 
       <style>{`
+        /* ExpenseNest Login Layout Fix */
 
-/* ExpenseNest Login Layout Fix */
+        .auth-page .auth-card {
+          width: 100% !important;
+          max-width: 440px !important;
+          margin: auto !important;
+          padding: 32px !important;
+          box-sizing: border-box !important;
+        }
 
-.auth-page .auth-card {
-  width: 100% !important;
-  max-width: 440px !important;
-  margin: auto !important;
-  padding: 32px !important;
-  box-sizing: border-box !important;
-}
+        .auth-page .auth-card form {
+          display: flex !important;
+          flex-direction: column !important;
+          width: 100% !important;
+          gap: 0 !important;
+        }
 
-.auth-page .auth-card form {
-  display: flex !important;
-  flex-direction: column !important;
-  width: 100% !important;
-  gap: 0 !important;
-}
+        .auth-page .auth-field {
+          display: block !important;
+          width: 100% !important;
+          min-width: 0 !important;
+          margin-bottom: 20px !important;
+        }
 
-.auth-page .auth-field {
-  display: block !important;
-  width: 100% !important;
-  min-width: 0 !important;
-  margin-bottom: 20px !important;
-}
+        .auth-page .auth-input-wrap {
+          display: flex !important;
+          width: 100% !important;
+          min-width: 0 !important;
+          box-sizing: border-box !important;
+        }
 
-.auth-page .auth-input-wrap {
-  display: flex !important;
-  width: 100% !important;
-  min-width: 0 !important;
-  box-sizing: border-box !important;
-}
+        .auth-page .auth-input-wrap input {
+          flex: 1 !important;
+          width: 0 !important;
+          min-width: 0 !important;
+          height: 49px !important;
+          color: #ffffff !important;
+          background: transparent !important;
+          font-size: 14px !important;
+        }
 
-.auth-page .auth-input-wrap input {
-  flex: 1 !important;
-  width: 0 !important;
-  min-width: 0 !important;
-  height: 49px !important;
-  color: #ffffff !important;
-  background: transparent !important;
-  font-size: 14px !important;
-}
+        .auth-page .auth-input-wrap input:-webkit-autofill,
+        .auth-page .auth-input-wrap input:-webkit-autofill:hover,
+        .auth-page .auth-input-wrap input:-webkit-autofill:focus {
+          -webkit-text-fill-color: #ffffff !important;
+          -webkit-box-shadow: 0 0 0 1000px #0b1425 inset !important;
+          transition: background-color 9999s ease-in-out 0s;
+        }
 
-.auth-page .auth-input-wrap input:-webkit-autofill,
-.auth-page .auth-input-wrap input:-webkit-autofill:hover,
-.auth-page .auth-input-wrap input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #ffffff !important;
-  -webkit-box-shadow: 0 0 0 1000px #0b1425 inset !important;
-  transition: background-color 9999s ease-in-out 0s;
-}
+        .auth-page .auth-submit {
+          display: block !important;
+          width: 100% !important;
+          min-height: 54px !important;
+          margin: 8px 0 0 !important;
+          white-space: normal !important;
+        }
 
-.auth-page .auth-submit {
-  display: block !important;
-  width: 100% !important;
-  min-height: 54px !important;
-  margin: 8px 0 0 !important;
-  white-space: normal !important;
-}
+        .auth-page .auth-tabs {
+          width: 100% !important;
+          box-sizing: border-box !important;
+        }
 
-.auth-page .auth-tabs {
-  width: 100% !important;
-  box-sizing: border-box !important;
-}
-
-@media(max-width: 520px) {
-  .auth-page .auth-card {
-    padding: 26px 20px !important;
-  }
-}
-
+        @media(max-width: 520px) {
+          .auth-page .auth-card {
+            padding: 26px 20px !important;
+          }
+        }
 
         .auth-page {
           min-height: 100vh;
@@ -629,6 +615,29 @@ export default function Auth({ onAuthSuccess }) {
           font-size: 11px;
         }
 
+        .auth-admin-link {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 8px;
+          margin-top: 18px;
+          padding-top: 16px;
+          border-top: 1px solid rgba(148,163,184,.13);
+          font-size: 13px;
+        }
+
+        .auth-admin-link a {
+          color: #38bdf8;
+          font-weight: 700;
+          text-decoration: none;
+          transition: color .2s ease;
+        }
+
+        .auth-admin-link a:hover {
+          color: #7dd3fc;
+          text-decoration: underline;
+        }
+
         @keyframes authAppear {
           from {
             opacity: 0;
@@ -659,11 +668,11 @@ export default function Auth({ onAuthSuccess }) {
           .auth-card {
             animation: none;
           }
+
           .auth-submit {
             transition: none;
           }
         }
-
       `}</style>
     </div>
   );
