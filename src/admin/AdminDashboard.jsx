@@ -1,11 +1,5 @@
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState
-} from 'react';
-
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase';
 import './AdminDashboard.css';
 
@@ -26,8 +20,9 @@ export default function AdminDashboard({ onLogout }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null);
 
-  // LOAD ADMIN DASHBOARD DATA
+  // LOAD DASHBOARD DATA
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -56,7 +51,6 @@ export default function AdminDashboard({ onLogout }) {
       setStats(data.stats || {});
       setUsers(Array.isArray(data.users) ? data.users : []);
       setLastUpdated(new Date());
-
     } catch (err) {
       setError(err.message || 'Dashboard loading failed.');
     } finally {
@@ -164,10 +158,24 @@ export default function AdminDashboard({ onLogout }) {
       .slice(0, 5);
   }, [users]);
 
+  // NAVIGATION
   const navigateTo = (target) => {
     setSection(target);
     setSearch('');
     setFilter('All');
+    setSelectedUser(null);
+  };
+
+  // COPY USER INFORMATION
+  const copyUserInfo = async (value) => {
+    if (!value) return;
+
+    try {
+      await navigator.clipboard.writeText(value);
+      alert('Copied successfully!');
+    } catch {
+      alert('Unable to copy. Please copy manually.');
+    }
   };
 
   return (
@@ -197,6 +205,7 @@ export default function AdminDashboard({ onLogout }) {
             >
               <span>{item.icon}</span>
               {item.name}
+
               {section === item.name && (
                 <span className="admin-menu-indicator">●</span>
               )}
@@ -236,7 +245,6 @@ export default function AdminDashboard({ onLogout }) {
             </div>
 
             <h1>{section}</h1>
-
             <p>ExpenseNest Administration</p>
           </div>
 
@@ -264,7 +272,7 @@ export default function AdminDashboard({ onLogout }) {
           </p>
         )}
 
-        {/* LOADING */}
+        {/* LOADING AND ERROR */}
         {loading ? (
           <div className="admin-message">
             Loading dashboard...
@@ -279,7 +287,6 @@ export default function AdminDashboard({ onLogout }) {
             </button>
           </div>
         ) : (
-
           <>
 
             {/* OVERVIEW */}
@@ -314,9 +321,7 @@ export default function AdminDashboard({ onLogout }) {
                     >
                       <div className="overview-stat-top">
                         <span>{card.icon}</span>
-                        <small>
-                          {card.type.toUpperCase()}
-                        </small>
+                        <small>{card.type.toUpperCase()}</small>
                       </div>
 
                       <p>{card.title}</p>
@@ -356,12 +361,10 @@ export default function AdminDashboard({ onLogout }) {
                             <div
                               className="admin-chart-bar"
                               style={{
-                                height: `${
-                                  Math.max(
-                                    5,
-                                    (item.count / maxRegistrations) * 100
-                                  )
-                                }%`,
+                                height: `${Math.max(
+                                  5,
+                                  (item.count / maxRegistrations) * 100
+                                )}%`,
                               }}
                             />
                           </div>
@@ -415,7 +418,10 @@ export default function AdminDashboard({ onLogout }) {
                     </button>
                   </div>
 
-                  <UserTable users={recentUsers} />
+                  <UserTable
+                    users={recentUsers}
+                    onViewUser={setSelectedUser}
+                  />
 
                 </div>
 
@@ -458,7 +464,10 @@ export default function AdminDashboard({ onLogout }) {
 
                 </div>
 
-                <UserTable users={filteredUsers} />
+                <UserTable
+                  users={filteredUsers}
+                  onViewUser={setSelectedUser}
+                />
 
               </div>
             )}
@@ -502,12 +511,10 @@ export default function AdminDashboard({ onLogout }) {
                           <div
                             className="admin-chart-bar"
                             style={{
-                              height: `${
-                                Math.max(
-                                  5,
-                                  (item.count / maxRegistrations) * 100
-                                )
-                              }%`,
+                              height: `${Math.max(
+                                5,
+                                (item.count / maxRegistrations) * 100
+                              )}%`,
                             }}
                           />
                         </div>
@@ -607,13 +614,120 @@ export default function AdminDashboard({ onLogout }) {
           </>
         )}
 
+        {/* USER DETAILS MODAL */}
+        {selectedUser && (
+          <div
+            className="user-modal-overlay"
+            onClick={() => setSelectedUser(null)}
+          >
+            <div
+              className="user-modal"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="user-modal-title"
+            >
+
+              <div className="user-modal-header">
+                <div>
+                  <span className="user-modal-eyebrow">
+                    USER PROFILE
+                  </span>
+
+                  <h2 id="user-modal-title">
+                    User Details
+                  </h2>
+                </div>
+
+                <button
+                  className="user-modal-close"
+                  onClick={() => setSelectedUser(null)}
+                  aria-label="Close user details"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="user-modal-avatar">
+                {(selectedUser.email || 'U')
+                  .charAt(0)
+                  .toUpperCase()}
+              </div>
+
+              <div className="user-modal-info">
+
+                <div>
+                  <small>Email Address</small>
+                  <strong>{selectedUser.email || '—'}</strong>
+
+                  <button
+                    className="user-copy-btn"
+                    onClick={() => copyUserInfo(selectedUser.email)}
+                  >
+                    Copy Email
+                  </button>
+                </div>
+
+                <div>
+                  <small>User ID</small>
+                  <strong className="user-id-text">
+                    {selectedUser.id ||
+                      selectedUser.user_id ||
+                      'Not available'}
+                  </strong>
+
+                  {(selectedUser.id || selectedUser.user_id) && (
+                    <button
+                      className="user-copy-btn"
+                      onClick={() =>
+                        copyUserInfo(
+                          selectedUser.id || selectedUser.user_id
+                        )
+                      }
+                    >
+                      Copy ID
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <small>Registration Date</small>
+                  <strong>
+                    {selectedUser.created_at
+                      ? new Date(
+                          selectedUser.created_at
+                        ).toLocaleString('en-IN')
+                      : 'Not available'}
+                  </strong>
+                </div>
+
+                <div>
+                  <small>Account Status</small>
+                  <strong className="admin-user-status">
+                    {selectedUser.status || 'Registered'}
+                  </strong>
+                </div>
+
+              </div>
+
+              <button
+                className="user-modal-done"
+                onClick={() => setSelectedUser(null)}
+              >
+                Close Details
+              </button>
+
+            </div>
+          </div>
+        )}
+
       </main>
     </div>
   );
 }
 
 // USER TABLE COMPONENT
-function UserTable({ users }) {
+function UserTable({ users, onViewUser }) {
 
   if (!users.length) {
     return (
@@ -637,6 +751,7 @@ function UserTable({ users }) {
             <th>Email Address</th>
             <th>Registration Date</th>
             <th>Status</th>
+            <th>Action</th>
           </tr>
         </thead>
 
@@ -647,7 +762,9 @@ function UserTable({ users }) {
               <td>
                 <div className="admin-user-email">
                   <span className="admin-user-avatar">
-                    {(user.email || 'U').charAt(0).toUpperCase()}
+                    {(user.email || 'U')
+                      .charAt(0)
+                      .toUpperCase()}
                   </span>
 
                   {user.email || '—'}
@@ -664,6 +781,15 @@ function UserTable({ users }) {
                 <span className="admin-user-status">
                   {user.status || 'Registered'}
                 </span>
+              </td>
+
+              <td>
+                <button
+                  className="user-view-btn"
+                  onClick={() => onViewUser?.(user)}
+                >
+                  View Details
+                </button>
               </td>
 
             </tr>
