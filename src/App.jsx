@@ -1,3 +1,4 @@
+import Footer from './components/Footer.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownRight,
@@ -1794,6 +1795,7 @@ export default function App() {
         goals={goals}
       />
     </main>
+     <Footer />
   </>;
 }
 
