@@ -350,7 +350,7 @@ export default function Auth({ onAuthSuccess }) {
               transparent 35%
             ),
             #080f20;
-          font-family: Arial, sans-serif;
+          font-family: var(--font-ui);
         }
 
         .auth-decoration {
@@ -398,7 +398,7 @@ export default function Auth({ onAuthSuccess }) {
           margin-bottom: 30px;
           color: white;
           font-size: 23px;
-          font-weight: 750;
+          font-weight: 700;
           letter-spacing: -.5px;
         }
 
@@ -423,7 +423,7 @@ export default function Auth({ onAuthSuccess }) {
           margin: 0 0 10px;
           color: white;
           font-size: 29px;
-          font-weight: 750;
+          font-weight: 700;
           letter-spacing: -.7px;
         }
 
@@ -451,7 +451,7 @@ export default function Auth({ onAuthSuccess }) {
           background: transparent;
           color: #91a2bd;
           font-size: 14px;
-          font-weight: 650;
+          font-weight: 600;
           cursor: pointer;
         }
 
@@ -470,7 +470,7 @@ export default function Auth({ onAuthSuccess }) {
           margin-bottom: 9px;
           color: #e3eaf5;
           font-size: 13px;
-          font-weight: 650;
+          font-weight: 600;
         }
 
         .auth-label-row {
@@ -524,7 +524,7 @@ export default function Auth({ onAuthSuccess }) {
           background: transparent;
           color: #38bdf8;
           font-size: 12px;
-          font-weight: 650;
+          font-weight: 600;
           cursor: pointer;
         }
 

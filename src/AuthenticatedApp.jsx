@@ -236,6 +236,7 @@ export default function AuthenticatedApp() {
         'expenseNestSavingsGoals',
         'expenseNestCustomCategories',
         'expenseNestTheme',
+        'expenseNestCurrency',
       ];
 
       storageKeys.forEach((key) => {
@@ -297,7 +298,7 @@ export default function AuthenticatedApp() {
             align-items: center;
             background: #080f20;
             color: white;
-            font-family: Arial, sans-serif;
+            font-family: var(--font-ui);
           }
           .en-loader {
             width: 45px;
@@ -385,7 +386,7 @@ export default function AuthenticatedApp() {
                 #101b32 55%,
                 #080f20
               );
-            font-family: Arial, sans-serif;
+            font-family: var(--font-ui);
           }
 
           .en-welcome-card {
@@ -410,7 +411,7 @@ export default function AuthenticatedApp() {
             border-radius: 20px;
             color: white;
             font-size: 34px;
-            font-weight: 800;
+            font-weight: 700;
             background: linear-gradient(135deg,#2563eb,#06b6d4);
             box-shadow: 0 10px 30px rgba(37,99,235,.3);
           }
@@ -419,7 +420,7 @@ export default function AuthenticatedApp() {
             color: #8dbbff;
             font-size: 14px;
             font-weight: 700;
-            letter-spacing: 2px;
+            letter-spacing: 1.2px;
             margin-bottom: 22px;
           }
 
@@ -428,7 +429,7 @@ export default function AuthenticatedApp() {
             font-size: clamp(25px,4vw,32px);
             line-height: 1.2;
             margin: 0 0 12px;
-            font-weight: 750;
+            font-weight: 700;
             letter-spacing: -.7px;
           }
 
@@ -451,7 +452,7 @@ export default function AuthenticatedApp() {
             padding: 13px 18px;
             border-radius: 13px;
             font-size: 16px;
-            font-weight: 650;
+            font-weight: 600;
             cursor: pointer;
             transition: transform .2s ease, box-shadow .2s ease;
           }
@@ -542,7 +543,7 @@ export default function AuthenticatedApp() {
         </button>
       </div>
 
-      <App />
+      <App user={session.user} />
 
       <style>{`
         .en-cloud-bar {
@@ -555,7 +556,7 @@ export default function AuthenticatedApp() {
           gap: 16px;
           background: #101b32;
           color: #b9d7ff;
-          font: 12px Arial, sans-serif;
+          font: 12px var(--font-ui);
         }
 
         .en-cloud-bar button {

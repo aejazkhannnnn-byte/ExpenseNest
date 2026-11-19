@@ -1,6 +1,9 @@
+import FamilySharing from './FamilySharing';
 import Footer from './components/Footer.jsx';
+import { CURRENCIES, CURRENCY_STORAGE_KEY, DEFAULT_CURRENCY, formatCurrency, getPreferredCurrency, isSupportedCurrency } from './currency.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  UsersRound,
   ArrowDownRight,
   ArrowLeftRight,
   ArrowRight,
@@ -21,6 +24,7 @@ import {
   Printer,
   Repeat,
   Search,
+  Settings2,
   ShieldCheck,
   ShoppingBag,
   Sparkles,
@@ -43,6 +47,8 @@ const CATEGORY_BUDGETS_KEY = 'expenseNestCategoryBudgets';
 const RECURRING_KEY = 'expenseNestRecurringRules';
 const GOALS_KEY = 'expenseNestSavingsGoals';
 const CUSTOM_CATEGORIES_KEY = 'expenseNestCustomCategories';
+const CURRENCY_KEY = CURRENCY_STORAGE_KEY;
+const REMINDER_NOTIFICATIONS_KEY = 'expenseNestReminderNotifications';
 const defaultCategories = ['Food', 'Travel', 'Shopping', 'Bills', 'Other'];
 const defaultAccounts = [
   { id: 'cash', name: 'Cash', openingBalance: 0 },
@@ -51,6 +57,8 @@ const defaultAccounts = [
 ];
 const sectionNavigation = [
   { id: 'overview', label: 'Home', icon: WalletCards },
+  { id: 'settings', label: 'Settings', icon: Settings2 },
+  { id: 'family-sharing', label: 'Family', icon: UsersRound },
   { id: 'accounts', label: 'Accounts', icon: WalletCards },
   { id: 'budget', label: 'Budget', icon: PiggyBank },
   { id: 'cash-flow', label: 'Forecast', icon: TrendingUp },
@@ -67,12 +75,6 @@ const sectionNavigation = [
 ];
 const categoryIcons = { Food: Utensils, Travel: Plane, Shopping: ShoppingBag, Bills: Zap, Other: Sparkles };
 const categoryColors = { Food: '#8490ff', Travel: '#54c4e6', Shopping: '#d58af1', Bills: '#ffb85c', Other: '#63d6a5' };
-
-const formatCurrency = (amount) => new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  maximumFractionDigits: 2,
-}).format(amount);
 
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -105,6 +107,12 @@ function shiftMonth(month, offset) {
 
 function getSavedTheme() {
   return localStorage.getItem('expenseNestTheme') === 'light' ? 'light' : 'dark';
+}
+
+function getNotificationPermission() {
+  return typeof window !== 'undefined' && 'Notification' in window
+    ? window.Notification.permission
+    : 'unsupported';
 }
 
 function getSavedCustomCategories() {
@@ -437,10 +445,13 @@ function parseFullBackup(source) {
   if (data.monthlyBudget !== undefined && data.monthlyBudget !== '' && !validAmount(data.monthlyBudget)) {
     throw new Error('The backup contains an invalid monthly budget.');
   }
+  if (data.currency !== undefined && !isSupportedCurrency(data.currency)) {
+    throw new Error('The backup contains an unsupported currency preference.');
+  }
   return backup;
 }
 
-export default function App() {
+export default function App({ user }) {
   const [transactions, setTransactions] = useState(getSavedTransactions);
   const [accounts, setAccounts] = useState(getSavedAccounts);
   const [form, setForm] = useState({ title: '', amount: '', type: 'expense', category: 'Food', accountId: 'cash', fromAccountId: 'cash', toAccountId: 'bank', date: localDateKey() });
@@ -479,6 +490,9 @@ export default function App() {
   const [categoryBudgetDrafts, setCategoryBudgetDrafts] = useState({});
   const [categoryBudgetNotice, setCategoryBudgetNotice] = useState('');
   const [theme, setTheme] = useState(getSavedTheme);
+  const [currency, setCurrency] = useState(getPreferredCurrency);
+  const [notificationPermission, setNotificationPermission] = useState(getNotificationPermission);
+  const [notificationStatus, setNotificationStatus] = useState('');
   const [importPreview, setImportPreview] = useState(null);
   const [importStatus, setImportStatus] = useState('');
   const [backupPreview, setBackupPreview] = useState(null);
@@ -718,10 +732,14 @@ export default function App() {
         frame = 0;
         const current = sectionNavigation.reduce((active, { id }) => {
           const section = document.getElementById(id);
-          return section && section.getBoundingClientRect().top <= 145 ? id : active;
-        }, sectionNavigation[0].id);
+          if (!section) return active;
+
+          const sectionTop = section.getBoundingClientRect().top;
+          const activeTop = document.getElementById(active)?.getBoundingClientRect().top ?? -Infinity;
+          return sectionTop <= 145 && sectionTop > activeTop ? id : active;
+        }, 'overview');
         const atPageEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8;
-        const nextActive = atPageEnd ? sectionNavigation[sectionNavigation.length - 1].id : current;
+        const nextActive = atPageEnd ? 'settings' : current;
         setActiveSection((previous) => previous === nextActive ? previous : nextActive);
         const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight;
         const progress = scrollableHeight > 0 ? Math.min(1, Math.max(0, window.scrollY / scrollableHeight)) : 0;
@@ -754,6 +772,75 @@ export default function App() {
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0b1120' : '#ffffff');
     localStorage.setItem('expenseNestTheme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (notificationPermission !== 'granted' || dueReminders.length === 0) return;
+
+    const today = localDateKey();
+    const storedNotifications = readLocalJson(REMINDER_NOTIFICATIONS_KEY, []);
+    const previouslyNotified = Array.isArray(storedNotifications) ? storedNotifications : [];
+    const notifiedKeys = new Set(previouslyNotified);
+    const newReminders = dueReminders.filter(({ rule }) => !notifiedKeys.has(`${today}:${rule.id}`));
+    if (newReminders.length === 0) return;
+
+    const messages = newReminders.slice(0, 3).map(({ rule, daysUntil }) => (
+      daysUntil < 0
+        ? `${rule.title} is overdue by ${Math.abs(daysUntil)} day${Math.abs(daysUntil) === 1 ? '' : 's'}`
+        : daysUntil === 0
+          ? `${rule.title} is due today`
+          : `${rule.title} is due in ${daysUntil} day${daysUntil === 1 ? '' : 's'}`
+    ));
+    if (newReminders.length > messages.length) messages.push(`and ${newReminders.length - messages.length} more`);
+
+    try {
+      const notification = new window.Notification(
+        newReminders.some(({ daysUntil }) => daysUntil < 0) ? 'Recurring payment overdue' : 'Upcoming recurring payment',
+        { body: messages.join(' · '), tag: `expensenest-reminders-${today}-${newReminders.map(({ rule }) => rule.id).join('-').slice(0, 80)}` },
+      );
+      notification.onclick = () => {
+        window.focus();
+        document.getElementById('recurring')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        notification.close();
+      };
+      const nextNotified = [
+        ...previouslyNotified.filter((value) => typeof value === 'string' && value.startsWith(`${today}:`)),
+        ...newReminders.map(({ rule }) => `${today}:${rule.id}`),
+      ].slice(-200);
+      localStorage.setItem(REMINDER_NOTIFICATIONS_KEY, JSON.stringify(nextNotified));
+    } catch (error) {
+      console.error('Could not show recurring payment notification:', error);
+      setNotificationStatus('Browser could not show the alert. The in-app reminder is still available.');
+    }
+  }, [dueReminders, notificationPermission]);
+
+  function handleCurrencyChange(event) {
+    const nextCurrency = event.target.value;
+    if (!isSupportedCurrency(nextCurrency)) return;
+    localStorage.setItem(CURRENCY_KEY, nextCurrency);
+    setCurrency(nextCurrency);
+  }
+
+  async function enablePaymentNotifications() {
+    if (notificationPermission === 'unsupported') {
+      setNotificationStatus('This browser does not support desktop alerts. In-app reminders are still available.');
+      return;
+    }
+    if (notificationPermission === 'denied') {
+      setNotificationStatus('Browser alerts are blocked. Allow notifications for ExpenseNest in your browser site settings.');
+      return;
+    }
+
+    try {
+      const permission = await window.Notification.requestPermission();
+      setNotificationPermission(permission);
+      setNotificationStatus(permission === 'granted'
+        ? 'Alerts are enabled. ExpenseNest will remind you while it is open.'
+        : 'Alerts were not enabled. You can still see reminders inside ExpenseNest.');
+    } catch (error) {
+      console.error('Could not request notification permission:', error);
+      setNotificationStatus('Could not enable browser alerts. You can still see reminders inside ExpenseNest.');
+    }
+  }
 
   useEffect(() => {
     setCategoryFilter('');
@@ -804,7 +891,8 @@ export default function App() {
 
   function deleteAccount(accountId) {
     if (defaultAccounts.some((account) => account.id === accountId)) return;
-    if (transactions.some((item) => item.accountId === accountId) || recurringRules.some((rule) => rule.accountId === accountId)) {
+    if (transactions.some((item) => item.accountId === accountId || item.fromAccountId === accountId || item.toAccountId === accountId)
+      || recurringRules.some((rule) => rule.accountId === accountId)) {
       setAccountStatus('This account is in use. Reassign its transactions and recurring schedules before removing it.');
       return;
     }
@@ -825,7 +913,17 @@ export default function App() {
     event.preventDefault();
     if (!knownAccountIds.has(legacyAssignmentDraft) || !unassignedTransactions.length) return;
     const legacyTransactionIds = new Set(unassignedTransactions.map((item) => item.id));
-    save(transactions.map((item) => legacyTransactionIds.has(item.id) ? { ...item, accountId: legacyAssignmentDraft } : item));
+    save(transactions.map((item) => {
+      if (!legacyTransactionIds.has(item.id)) return item;
+      if (item.type === 'transfer') {
+        const fromAccountId = knownAccountIds.has(item.fromAccountId) ? item.fromAccountId : legacyAssignmentDraft;
+        const toAccountId = knownAccountIds.has(item.toAccountId)
+          ? item.toAccountId
+          : accounts.find((account) => account.id !== fromAccountId)?.id ?? '';
+        return { ...item, fromAccountId, toAccountId };
+      }
+      return { ...item, accountId: legacyAssignmentDraft };
+    }));
     const legacyRecurringRuleIds = new Set(unassignedTransactions.map((item) => item.recurringRuleId).filter(Boolean));
     if (legacyRecurringRuleIds.size) {
       saveRecurringRules(recurringRules.map((rule) => (
@@ -1031,7 +1129,7 @@ export default function App() {
 
   function exportCsv() {
     const rows = [
-      ['Date', 'Description', 'Type', 'Category', 'Amount (INR)', 'Account', 'From account', 'To account'],
+      ['Date', 'Description', 'Type', 'Category', `Amount (${currency})`, 'Account', 'From account', 'To account'],
       ...visibleTransactions.map((item) => [
         transactionDateKey(item.date), item.title, item.type, item.type === 'transfer' ? 'Transfer' : item.category, Number(item.amount),
         item.type === 'transfer' ? '' : accountName(item.accountId),
@@ -1067,6 +1165,7 @@ export default function App() {
         recurringRules,
         goals,
         theme,
+        currency,
       },
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -1119,6 +1218,7 @@ export default function App() {
     const data = backupPreview.backup.data;
     const nextMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(data.selectedMonth) ? data.selectedMonth : currentMonthKey();
     const nextTheme = data.theme === 'light' ? 'light' : 'dark';
+    const nextCurrency = isSupportedCurrency(data.currency) ? data.currency : DEFAULT_CURRENCY;
     const nextCustomCategories = Array.isArray(data.categories) ? data.categories : [];
     const nextAccounts = Array.isArray(data.accounts) ? data.accounts : defaultAccounts;
     const storageValues = new Map([
@@ -1131,6 +1231,7 @@ export default function App() {
       [GOALS_KEY, JSON.stringify(data.goals)],
       [BUDGET_KEY, data.monthlyBudget ? String(data.monthlyBudget) : null],
       ['expenseNestTheme', nextTheme],
+      [CURRENCY_KEY, nextCurrency],
     ]);
     const previousValues = new Map([...storageValues.keys()].map((key) => [key, localStorage.getItem(key)]));
     try {
@@ -1169,6 +1270,7 @@ export default function App() {
     setEditingId(null);
     setRepeatMonthly(false);
     setTheme(nextTheme);
+    setCurrency(nextCurrency);
     setCategoryBudgetDrafts(data.categoryBudgets[nextMonth] ?? {});
     setGoalContributionDrafts({});
     setBackupPreview(null);
@@ -1287,6 +1389,10 @@ export default function App() {
         </a>
         <div className="header-actions">
           <div className="header-note"><ShieldCheck size={15} aria-hidden="true" /><span>Saved privately on this device</span></div>
+          <a className="header-settings" href="#settings" onClick={() => setActiveSection('settings')} aria-label="Open settings" title="Settings">
+            <Settings2 size={16} aria-hidden="true" />
+            <span>Settings</span>
+          </a>
           <button className="theme-toggle" type="button" onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
             {theme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
             <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
@@ -1302,7 +1408,7 @@ export default function App() {
           <span className="section-nav-current-copy"><small>YOU ARE IN</small><strong>{activeNavItem.label}</strong></span>
         </div>
         <div className="section-nav-links" ref={sectionNavRef}>
-          {sectionNavigation.map(({ id, label, icon: SectionIcon }) => <a
+          {sectionNavigation.filter(({ id }) => id !== 'settings').map(({ id, label, icon: SectionIcon }) => <a
             href={`#${id}`}
             className={activeSection === id ? 'active' : ''}
             aria-current={activeSection === id ? 'location' : undefined}
@@ -1678,12 +1784,13 @@ export default function App() {
       </section>
 
       <section className="panel trend-panel" id="trends">
-        <TrendChart data={monthlyTrend} selectedMonthLabel={selectedMonthLabel} />
+        <TrendChart data={monthlyTrend} selectedMonthLabel={selectedMonthLabel} currency={currency} />
       </section>
 
       <DailySpendingCalendar
         month={selectedMonth}
         monthLabel={selectedMonthLabel}
+        currency={currency}
         transactions={monthTransactions}
         accountName={accountName}
         dateFrom={dateFrom}
@@ -1772,13 +1879,96 @@ export default function App() {
             <span><strong>{backupPreview.goalCount}</strong> savings goals</span>
             <span><strong>{backupPreview.categoryCount}</strong> custom categories</span>
           </div>
-          <p className="backup-warning">Restoring replaces the accounts, transactions, budgets, schedules, goals and theme currently saved in this browser.</p>
+          <p className="backup-warning">Restoring replaces the accounts, transactions, budgets, schedules, goals, theme and currency preference currently saved in this browser.</p>
           <div className="backup-preview-actions">
             <button className="backup-restore-confirm" type="button" onClick={restoreFullBackup}><Upload size={14} aria-hidden="true" /> Restore this backup</button>
             <button className="csv-cancel" type="button" onClick={() => setBackupPreview(null)}>Keep current data</button>
           </div>
         </div>}
       </section>
+
+      <section id="family-sharing" className="panel">
+        <FamilySharing user={user} currency={currency} />
+      </section>
+
+      <section id="settings" className="panel settings-panel" aria-labelledby="settings-title">
+        <div className="settings-heading">
+          <div className="settings-heading-icon"><Settings2 size={19} aria-hidden="true" /></div>
+          <div>
+            <p className="eyebrow">YOUR PREFERENCES</p>
+            <h2 id="settings-title">Settings</h2>
+            <p>Choose how ExpenseNest looks and displays your amounts.</p>
+          </div>
+        </div>
+
+        <div className="settings-grid">
+          <section className="settings-card" aria-labelledby="settings-appearance-title">
+            <div className="settings-card-copy">
+              <h3 id="settings-appearance-title">Appearance</h3>
+              <p>Pick the theme that feels comfortable to use.</p>
+            </div>
+            <div className="settings-theme-options" role="group" aria-label="Appearance theme">
+              <button type="button" className={theme === 'dark' ? 'selected' : ''} onClick={() => setTheme('dark')} aria-pressed={theme === 'dark'}><Moon size={16} aria-hidden="true" /> Dark</button>
+              <button type="button" className={theme === 'light' ? 'selected' : ''} onClick={() => setTheme('light')} aria-pressed={theme === 'light'}><Sun size={16} aria-hidden="true" /> Light</button>
+            </div>
+          </section>
+
+          <section className="settings-card" aria-labelledby="settings-currency-title">
+            <div className="settings-card-copy">
+              <h3 id="settings-currency-title">Currency display</h3>
+              <p>Choose the currency used to label amounts in the app.</p>
+            </div>
+            <label className="settings-currency-field" htmlFor="settings-currency">
+              <span>Currency</span>
+              <select id="settings-currency" value={currency} onChange={handleCurrencyChange}>
+                {CURRENCIES.map(({ code, name }) => <option value={code} key={code}>{code} · {name}</option>)}
+              </select>
+            </label>
+            <p className="settings-currency-note">This changes the currency label and number format only. It does not convert values using exchange rates.</p>
+          </section>
+
+          <section className="settings-card" aria-labelledby="settings-notifications-title">
+            <div className="settings-card-copy">
+              <h3 id="settings-notifications-title">Recurring payment alerts</h3>
+              <p>Get a browser notification for unpaid recurring items that are due within the next seven days.</p>
+            </div>
+            <div className="settings-notification-action">
+              <span className={`settings-notification-state ${notificationPermission}`}>
+                <span aria-hidden="true" />
+                {notificationPermission === 'granted' ? 'Enabled' : notificationPermission === 'denied' ? 'Blocked' : notificationPermission === 'unsupported' ? 'Unavailable' : 'Off'}
+              </span>
+              <button
+                className="settings-notification-button"
+                type="button"
+                onClick={enablePaymentNotifications}
+                disabled={notificationPermission !== 'default'}
+              >
+                <Bell size={15} aria-hidden="true" />
+                {notificationPermission === 'granted' ? 'Alerts enabled' : notificationPermission === 'denied' ? 'Blocked in browser' : notificationPermission === 'unsupported' ? 'Not supported' : 'Enable alerts'}
+              </button>
+            </div>
+            <p className="settings-currency-note" role="status" aria-live="polite">
+              {notificationStatus || (notificationPermission === 'granted'
+                ? 'Alerts appear while ExpenseNest is open. The in-app reminder remains available.'
+                : notificationPermission === 'denied'
+                  ? 'Allow notifications for ExpenseNest in your browser site settings. In-app reminders still work.'
+                  : notificationPermission === 'unsupported'
+                    ? 'This browser cannot show desktop alerts. In-app reminders still work.'
+                    : 'You can still see due and overdue reminders inside ExpenseNest.')}
+            </p>
+          </section>
+
+          <section className="settings-card settings-account-card" aria-labelledby="settings-account-title">
+            <div className="settings-account-icon"><ShieldCheck size={18} aria-hidden="true" /></div>
+            <div className="settings-card-copy">
+              <h3 id="settings-account-title">Account &amp; storage</h3>
+              <p>{user?.email || 'Guest account'}</p>
+              <small>{user ? 'Your data syncs with this signed-in account.' : 'Your data is saved in this browser. Download a backup before clearing browser data.'}</small>
+            </div>
+          </section>
+        </div>
+      </section>
+
       <FullBackupPrintView
         selectedMonth={selectedMonth}
         theme={theme}
@@ -1793,13 +1983,14 @@ export default function App() {
         categoryBudgets={categoryBudgets}
         recurringRules={recurringRules}
         goals={goals}
+        currency={currency}
       />
     </main>
-     <Footer />
+
+    <Footer />
   </>;
 }
-
-function FullBackupPrintView({ selectedMonth, theme, categories, customCategories, accounts, unassignedBalance, unassignedCount, totalAccountBalance, transactions, monthlyBudgets, categoryBudgets, recurringRules, goals }) {
+function FullBackupPrintView({ selectedMonth, theme, currency, categories, customCategories, accounts, unassignedBalance, unassignedCount, totalAccountBalance, transactions, monthlyBudgets, categoryBudgets, recurringRules, goals }) {
   const monthLabel = new Date(`${selectedMonth}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const sortedTransactions = [...transactions].sort((first, second) => transactionDateKey(first.date).localeCompare(transactionDateKey(second.date)));
   const recurringNames = new Map(recurringRules.map((rule) => [rule.id, rule.title]));
@@ -1822,6 +2013,7 @@ function FullBackupPrintView({ selectedMonth, theme, categories, customCategorie
       <div className="pdf-backup-meta">
         <p><span>Selected month</span><strong>{monthLabel}</strong></p>
         <p><span>Theme</span><strong>{theme === 'light' ? 'Light' : 'Dark'}</strong></p>
+        <p><span>Currency</span><strong>{currency}</strong></p>
         <p><span>Categories</span><strong>{categories.length}</strong></p>
         <p><span>Accounts</span><strong>{accounts.length}</strong></p>
         <p><span>Total account balance</span><strong>{formatCurrency(totalAccountBalance)}</strong></p>
@@ -1979,7 +2171,7 @@ function MonthlyReport({ monthLabel, previousMonthLabel, totals, previousTotals,
   </section>;
 }
 
-function DailySpendingCalendar({ month, monthLabel, transactions, accountName, dateFrom, dateTo, onChangeMonth, onShowCurrentMonth, onSelectDate, onClearDateRange }) {
+function DailySpendingCalendar({ month, monthLabel, transactions, accountName, currency, dateFrom, dateTo, onChangeMonth, onShowCurrentMonth, onSelectDate, onClearDateRange }) {
   const daysInMonth = lastDayOfMonth(month);
   const [year, monthNumber] = month.split('-').map(Number);
   const firstWeekday = new Date(year, monthNumber - 1, 1).getDay();
@@ -2014,7 +2206,7 @@ function DailySpendingCalendar({ month, monthLabel, transactions, accountName, d
     totals[transaction.type] += Number(transaction.amount);
     return totals;
   }, { income: 0, expense: 0, transfer: 0 });
-  const compactCurrency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', notation: 'compact', maximumFractionDigits: 1 });
+  const compactCurrency = (value) => formatCurrency(value, currency, 'compact');
   const selectedRangeLabel = dateFrom && dateTo
     ? dateFrom === dateTo ? displayDate(dateFrom) : `${displayDate(dateFrom)} – ${displayDate(dateTo)}`
     : dateFrom ? `From ${displayDate(dateFrom)}` : dateTo ? `Until ${displayDate(dateTo)}` : '';
@@ -2059,7 +2251,7 @@ function DailySpendingCalendar({ month, monthLabel, transactions, accountName, d
               title={title}
             >
               <span className="calendar-day-number">{item.day}</span>
-              {item.expense > 0 ? <span className="calendar-day-amount">{compactCurrency.format(item.expense)}</span> : item.income > 0 ? <span className="calendar-income-mark">Income</span> : item.transfer > 0 ? <span className="calendar-transfer-mark">Transfer</span> : <span className="calendar-no-activity">—</span>}
+              {item.expense > 0 ? <span className="calendar-day-amount">{compactCurrency(item.expense)}</span> : item.income > 0 ? <span className="calendar-income-mark">Income</span> : item.transfer > 0 ? <span className="calendar-transfer-mark">Transfer</span> : <span className="calendar-no-activity">—</span>}
               {item.expense > 0 && <span className="calendar-day-track"><i style={{ width: `${Math.max(10, Math.round((item.expense / maxDailyExpense) * 100))}%` }} /></span>}
               {item.count > 0 && <span className="calendar-transaction-count">{item.count} txn</span>}
             </button>;
@@ -2101,7 +2293,7 @@ function DailySpendingCalendar({ month, monthLabel, transactions, accountName, d
   </section>;
 }
 
-function TrendChart({ data, selectedMonthLabel }) {
+function TrendChart({ data, selectedMonthLabel, currency }) {
   const [activeIndex, setActiveIndex] = useState(data.length - 1);
   const width = 760;
   const left = 74;
@@ -2130,9 +2322,7 @@ function TrendChart({ data, selectedMonthLabel }) {
   const expensePath = smoothPath(expensePoints);
   const incomeArea = `${incomePath} L ${right} ${bottom} L ${left} ${bottom} Z`;
   const expenseArea = `${expensePath} L ${right} ${bottom} L ${left} ${bottom} Z`;
-  const compactCurrency = (value) => new Intl.NumberFormat('en-IN', {
-    style: 'currency', currency: 'INR', notation: 'compact', maximumFractionDigits: 1,
-  }).format(value);
+  const compactCurrency = (value) => formatCurrency(value, currency, 'compact');
 
   function activatePoint(event, index) {
     if (event.key === 'Enter' || event.key === ' ') {

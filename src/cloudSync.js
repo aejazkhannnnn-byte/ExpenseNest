@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   goals: 'expenseNestSavingsGoals',
   customCategories: 'expenseNestCustomCategories',
   theme: 'expenseNestTheme',
+  currency: 'expenseNestCurrency',
 };
 
 export function getLocalExpenseData() {

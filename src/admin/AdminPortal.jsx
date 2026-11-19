@@ -1,169 +1,127 @@
-
 import { useEffect, useState } from 'react';
+import { ArrowLeft, LoaderCircle, LogOut, ShieldX } from 'lucide-react';
 import { supabase } from '../supabase';
 import AdminLogin from './AdminLogin';
 import AdminDashboard from './AdminDashboard';
+import './AdminPortal.css';
 
 export default function AdminPortal() {
   const [session, setSession] = useState(null);
   const [checking, setChecking] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [verifiedAdminId, setVerifiedAdminId] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    let mounted = true;
+    let active = true;
 
-    async function checkSession() {
-      const { data, error } = await supabase.auth.getSession();
+    async function loadSession() {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (!active) return;
 
-      if (!mounted) return;
-
-      if (error) {
-        setError(error.message);
-        setChecking(false);
-        return;
-      }
-
-      setSession(data.session);
+      if (sessionError) setError(sessionError.message);
+      setSession(data?.session || null);
       setChecking(false);
     }
 
-    checkSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      if (!mounted) return;
-
+    loadSession();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
-      setIsAdmin(false);
       setError('');
-      setChecking(false);
+      if (!newSession) setVerifiedAdminId(null);
     });
 
     return () => {
-      mounted = false;
+      active = false;
       subscription.unsubscribe();
     };
   }, []);
 
   useEffect(() => {
     let active = true;
+    const userId = session?.user?.id;
 
     async function verifyAdmin() {
-      if (!session?.user?.id) {
-        setIsAdmin(false);
+      if (!userId) {
+        setVerifiedAdminId(null);
         return;
       }
 
       setChecking(true);
       setError('');
 
-      const { data, error } = await supabase
+      const { data, error: queryError } = await supabase
         .from('admin_users')
         .select('user_id')
-        .eq('user_id', session.user.id)
+        .eq('user_id', userId)
         .maybeSingle();
 
       if (!active) return;
 
-      if (error) {
-        setError('Admin permission verify nahi ho saki.');
-        setIsAdmin(false);
+      if (queryError) {
+        setError('Could not verify administrator access. Please try again.');
+        setVerifiedAdminId(null);
       } else {
-        setIsAdmin(Boolean(data));
+        setVerifiedAdminId(data?.user_id || null);
       }
-
       setChecking(false);
     }
 
     verifyAdmin();
-
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [session?.user?.id]);
 
   async function handleLogout() {
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      setError(error.message);
+    const { error: logoutError } = await supabase.auth.signOut();
+    if (logoutError) {
+      setError(logoutError.message);
       return;
     }
-
     setSession(null);
-    setIsAdmin(false);
+    setVerifiedAdminId(null);
+    setError('');
   }
 
   if (checking) {
     return (
-      <div className="admin-portal-loading">
-        Verifying Admin Access...
-        <style>{`
-          .admin-portal-loading {
-            min-height: 100vh;
-            display: grid;
-            place-items: center;
-            background: #080f20;
-            color: white;
-            font-family: Arial, sans-serif;
-          }
-        `}</style>
-      </div>
+      <main className="admin-portal-state">
+        <div className="admin-portal-state-card">
+          <span className="admin-portal-state-icon loading"><LoaderCircle size={22} /></span>
+          <h1>Checking admin access</h1>
+          <p>Securely verifying your ExpenseNest workspace.</p>
+        </div>
+      </main>
     );
   }
 
   if (!session) {
     return (
       <>
-        <AdminLogin
-          onAdminSuccess={(user) => {
-            setSession({
-              user,
-            });
-          }}
-        />
-        {error && <p role="alert">{error}</p>}
+        <AdminLogin onAdminSuccess={(user) => setSession({ user })} />
+        {error && <div className="admin-portal-login-error" role="alert">{error}</div>}
       </>
     );
   }
 
-  if (!isAdmin) {
+  if (verifiedAdminId !== session.user.id) {
     return (
-      <div className="admin-denied">
-        <div>
-          <h1>Access Denied</h1>
-          <p>This account does not have administrator permission.</p>
-          {error && <p>{error}</p>}
-          <button onClick={handleLogout}>Logout</button>
-        </div>
-
-        <style>{`
-          .admin-denied {
-            min-height: 100vh;
-            display: grid;
-            place-items: center;
-            padding: 20px;
-            box-sizing: border-box;
-            background: #080f20;
-            color: white;
-            font-family: Arial, sans-serif;
-            text-align: center;
-          }
-
-          .admin-denied button {
-            padding: 12px 25px;
-            border: 0;
-            border-radius: 9px;
-            background: #2563eb;
-            color: white;
-            cursor: pointer;
-          }
-        `}</style>
-      </div>
+      <main className="admin-portal-state">
+        <section className="admin-portal-state-card denied">
+          <span className="admin-portal-state-icon"><ShieldX size={23} /></span>
+          <span className="admin-portal-eyebrow">ACCESS CONTROL</span>
+          <h1>Admin access required</h1>
+          <p>{error || 'This account is not on the approved administrator list.'}</p>
+          <div className="admin-portal-state-actions">
+            <button type="button" className="admin-portal-button secondary" onClick={() => window.location.assign('/')}>
+              <ArrowLeft size={15} /> User login
+            </button>
+            <button type="button" className="admin-portal-button" onClick={handleLogout}>
+              <LogOut size={15} /> Sign out
+            </button>
+          </div>
+        </section>
+      </main>
     );
   }
 
-  return <AdminDashboard onLogout={handleLogout} />;
+  return <AdminDashboard onLogout={handleLogout} adminUser={session.user} />;
 }

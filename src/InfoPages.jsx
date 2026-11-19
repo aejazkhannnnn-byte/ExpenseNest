@@ -1,5 +1,5 @@
 
-import React from 'react';
+import { useEffect, useState } from 'react';
 import {
   Wallet,
   ShieldCheck,
@@ -12,8 +12,14 @@ import {
   Receipt,
   Cloud,
   Download,
-  Smartphone
+  Smartphone,
+  CircleAlert,
+  CircleCheck,
+  LoaderCircle,
+  MessageSquareText,
+  Send,
 } from 'lucide-react';
+import { supabase } from './supabase';
 
 import './InfoPages.css';
 
@@ -72,7 +78,10 @@ function PrivacyPolicy() {
         <p>
           ExpenseNest uses browser storage for local data and Supabase
           for authentication and cloud synchronization. The information
-          available in your account depends on the features you use.
+          available in your account depends on the features you use. If you
+          submit feedback while signed in, your message, category and account
+          email (when available) are stored in Supabase for the ExpenseNest
+          team to review and respond.
         </p>
       </section>
 
@@ -237,6 +246,76 @@ function AboutUs() {
 }
 
 function ContactUs() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [category, setCategory] = useState('general');
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [feedbackNotice, setFeedbackNotice] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) setFeedbackNotice({ type: 'error', text: error.message });
+        setSession(data?.session || null);
+        setAuthLoading(false);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setFeedbackNotice({ type: 'error', text: error.message || 'Could not check your sign-in status.' });
+        setAuthLoading(false);
+      });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!active) return;
+      setSession(nextSession);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  async function submitFeedback(event) {
+    event.preventDefault();
+    setFeedbackNotice(null);
+
+    const cleanMessage = message.trim();
+    if (cleanMessage.length < 10) {
+      setFeedbackNotice({ type: 'error', text: 'Please write at least 10 characters so we can understand your feedback.' });
+      return;
+    }
+    if (!session?.user?.id) {
+      setFeedbackNotice({ type: 'error', text: 'Please sign in before sending feedback.' });
+      return;
+    }
+
+    setSending(true);
+    try {
+      const { error } = await supabase.from('feedback_messages').insert({
+        user_id: session.user.id,
+        user_email: session.user.email || null,
+        category,
+        message: cleanMessage,
+      });
+
+      if (error) throw error;
+
+      setMessage('');
+      setCategory('general');
+      setFeedbackNotice({ type: 'success', text: 'Thanks! Your feedback has been sent to the ExpenseNest team.' });
+    } catch (error) {
+      setFeedbackNotice({ type: 'error', text: error.message || 'Could not send feedback. Please try again.' });
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <>
       <PageTitle
@@ -269,6 +348,64 @@ function ContactUs() {
           so we can understand how to help.
         </p>
       </div>
+
+      <section className="contact-feedback-card">
+        <div className="contact-feedback-heading">
+          <span className="contact-feedback-icon"><MessageSquareText size={20} /></span>
+          <div>
+            <h2>Send feedback</h2>
+            <p>Share an idea, report a problem, or tell us what could work better.</p>
+          </div>
+        </div>
+
+        {authLoading ? (
+          <div className="contact-feedback-loading"><LoaderCircle size={17} /> Checking your account…</div>
+        ) : !session?.user?.id ? (
+          <div className="contact-feedback-signin">
+            <p>Sign in to send feedback from this form. Your account email will be attached when available.</p>
+            <a href="/">Go to sign in</a>
+          </div>
+        ) : (
+          <>
+            <p className="contact-feedback-account">Sending as <strong>{session.user.email || 'your ExpenseNest account'}</strong></p>
+            <form className="contact-feedback-form" onSubmit={submitFeedback}>
+              <label>
+                Feedback type
+                <select value={category} onChange={(event) => setCategory(event.target.value)} disabled={sending}>
+                  <option value="general">General feedback</option>
+                  <option value="idea">Feature idea</option>
+                  <option value="bug">Report a problem</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label>
+                Your message
+                <textarea
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  placeholder="Tell us what happened or what you would like to see…"
+                  rows={5}
+                  minLength={10}
+                  maxLength={2000}
+                  required
+                  disabled={sending}
+                />
+                <small className="contact-feedback-counter">{message.length}/2000 characters</small>
+              </label>
+              <p className="contact-feedback-privacy">Your message and account email are stored for the team to review. Please do not include passwords, bank details or other sensitive financial information.</p>
+              {feedbackNotice && (
+                <div className={`contact-feedback-notice ${feedbackNotice.type}`} role={feedbackNotice.type === 'error' ? 'alert' : 'status'}>
+                  {feedbackNotice.type === 'success' ? <CircleCheck size={17} /> : <CircleAlert size={17} />}
+                  <span>{feedbackNotice.text}</span>
+                </div>
+              )}
+              <button type="submit" className="contact-feedback-submit" disabled={sending}>
+                {sending ? <><LoaderCircle size={16} className="contact-feedback-spinner" /> Sending…</> : <><Send size={16} /> Send feedback</>}
+              </button>
+            </form>
+          </>
+        )}
+      </section>
 
       <section className="contact-extra">
         <h2>We Welcome Your Feedback</h2>

@@ -1,0 +1,17 @@
+.admin-portal-state { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: radial-gradient(ellipse at 50% 0%, rgb(80 90 174 / 17%), transparent 30rem), #080d18; color: #edf2fb; font-family: var(--font-ui), sans-serif; }
+.admin-portal-state-card { width: min(100%, 430px); display: flex; flex-direction: column; align-items: center; padding: 31px; border: 1px solid rgb(150 172 205 / 13%); border-radius: 18px; background: linear-gradient(145deg, #121d2f, #0d1625); box-shadow: 0 20px 70px rgb(0 0 0 / 33%); text-align: center; animation: portalFadeIn .3s ease both; }
+.admin-portal-state-icon { width: 48px; height: 48px; display: grid; place-items: center; margin-bottom: 16px; border: 1px solid rgb(244 140 145 / 16%); border-radius: 15px; background: rgb(244 140 145 / 8%); color: #f49aa2; }
+.admin-portal-state-icon.loading { border-color: rgb(139 145 255 / 19%); background: rgb(139 145 255 / 9%); color: #a8adff; animation: portalSpin 1.4s linear infinite; }
+.admin-portal-eyebrow { color: #8895b2; font-size: 8px; font-weight: 700; letter-spacing: .10em; }
+.admin-portal-state-card h1 { margin: 8px 0; color: #eef3fb; font: 600 21px var(--font-ui); letter-spacing: -.03em; }
+.admin-portal-state-card p { max-width: 340px; color: #8b9ab0; font-size: 10px; line-height: 1.6; }
+.admin-portal-state-actions { display: flex; gap: 9px; margin-top: 20px; }
+.admin-portal-button { min-height: 37px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid rgb(139 145 255 / 23%); border-radius: 9px; background: linear-gradient(110deg, #747cf0, #4aa99f); color: white; cursor: pointer; font: 600 10px var(--font-ui); transition: filter .16s, transform .16s; }
+.admin-portal-button:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.admin-portal-button.secondary { border-color: rgb(150 172 205 / 16%); background: #172337; color: #b7c3d4; }
+.admin-portal-login-error { position: fixed; z-index: 30; right: 15px; bottom: 15px; max-width: min(430px, calc(100vw - 30px)); padding: 11px 14px; border: 1px solid rgb(239 112 127 / 20%); border-radius: 9px; background: #271a27; color: #f3a1a8; font: 10px/1.5 var(--font-ui); box-shadow: 0 12px 35px rgb(0 0 0 / 25%); }
+.admin-render-error .admin-portal-button { margin-top: 18px; }
+@keyframes portalSpin { to { transform: rotate(360deg); } }
+@keyframes portalFadeIn { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 480px) { .admin-portal-state-card { padding: 25px 19px; } .admin-portal-state-actions { width: 100%; flex-direction: column-reverse; } .admin-portal-button { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .admin-portal-state-card, .admin-portal-state-icon { animation-duration: .01ms; animation-iteration-count: 1; } }
