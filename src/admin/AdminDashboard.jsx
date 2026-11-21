@@ -44,7 +44,7 @@ const MENU = [
 
 const SECTION_COPY = {
   Overview: 'A clear view of your platform activity.',
-  Users: 'Review registered accounts and their sign-in access.',
+  Users: 'Review registered accounts and their access to ExpenseNest.',
   Analytics: 'Server-counted signups, feedback, and shared-family activity.',
   Feedback: 'Review the state of your feedback inbox.',
   Activity: 'A record of administrator account and feedback changes.',
@@ -246,7 +246,13 @@ export default function AdminDashboard({ onLogout, adminUser }) {
       const { data: displayIdRows, error: displayIdError } = await supabase
         .from('user_display_ids')
         .select('user_id, display_id');
-      const { data: suspendedRows, error: suspendedError } = await supabase.rpc('get_admin_user_suspensions');
+      const [
+        { data: suspendedRows, error: suspendedError },
+        { error: accountAccessError },
+      ] = await Promise.all([
+        supabase.rpc('get_admin_user_suspensions'),
+        supabase.rpc('is_account_allowed'),
+      ]);
       const displayIds = new Map((displayIdRows || []).map((row) => [row.user_id, row.display_id]));
       const suspendedUsers = new Map((suspendedRows || []).map((row) => [row.user_id, row.banned_until]));
 
@@ -262,8 +268,8 @@ export default function AdminDashboard({ onLogout, adminUser }) {
       setUserDisplayIdWarning(displayIdError
         ? 'Short IDs are not set up yet. Run supabase/user_display_ids.sql in the Supabase SQL Editor.'
         : '');
-      setUserAccessSetupWarning(suspendedError
-        ? 'Account access controls need setup. Run supabase/admin_user_actions.sql in Supabase SQL Editor.'
+      setUserAccessSetupWarning(suspendedError || accountAccessError
+        ? 'Account access protection needs setup. Run supabase/admin_user_actions.sql and supabase/suspended_account_access.sql in the Supabase SQL Editor.'
         : '');
       setLastUpdated(new Date());
     } catch (err) {
@@ -415,7 +421,7 @@ export default function AdminDashboard({ onLogout, adminUser }) {
     setSelectedUser(nextUser);
     setToast(data.audit_warning
       ? 'Access changed; audit entry needs review'
-      : action === 'suspend' ? 'Sign-in blocked for this account' : 'Sign-in restored for this account');
+      : action === 'suspend' ? 'Account access blocked' : 'Account access restored');
     await loadActivity();
     return data;
   }
@@ -733,6 +739,7 @@ export default function AdminDashboard({ onLogout, adminUser }) {
           onCopy={copyUserInfo}
           onAccountAction={updateUserSignInAccess}
           adminUserId={adminUser?.id}
+          accessSetupWarning={userAccessSetupWarning}
         />
       )}
     </div>
@@ -1264,8 +1271,8 @@ function ActivitySection({ items, loading, error, onRefresh }) {
                   const fromStatus = statusLabels[details.from] || details.from || 'Unknown';
                   const toStatus = statusLabels[details.to] || details.to || 'Unknown';
                   const isAccountAction = item.target_type === 'user';
-                  const actionLabel = details.requested_action === 'suspend' ? 'Sign-in blocked'
-                    : details.requested_action === 'reactivate' ? 'Sign-in restored'
+                  const actionLabel = details.requested_action === 'suspend' ? 'Account access blocked'
+                    : details.requested_action === 'reactivate' ? 'Account access restored'
                       : 'Account access updated';
                   const actionFailed = details.result === 'failed';
                   const target = isAccountAction
@@ -1381,7 +1388,7 @@ function UserTable({ users, onViewUser, emptyTitle, emptyMessage }) {
   );
 }
 
-function UserDetailsModal({ user, onClose, onCopy, onAccountAction, adminUserId }) {
+function UserDetailsModal({ user, onClose, onCopy, onAccountAction, adminUserId, accessSetupWarning }) {
   const email = user.email || '';
   const id = user.display_id || user.id || user.user_id || '';
   const userId = user.id || user.user_id;
@@ -1489,17 +1496,19 @@ function UserDetailsModal({ user, onClose, onCopy, onAccountAction, adminUserId 
             </>
           )}
         </section>
-        <section className="admin-user-access" aria-label="Sign-in access">
+        <section className="admin-user-access" aria-label="Account access">
           <div className="admin-user-access-heading">
-            <div><span className="admin-panel-kicker">SIGN-IN ACCESS</span><h3>{suspended ? 'Sign-in blocked' : 'Sign-in allowed'}</h3></div>
+            <div><span className="admin-panel-kicker">ACCOUNT ACCESS</span><h3>{suspended ? 'Access blocked' : 'Access allowed'}</h3></div>
             <ShieldCheck size={17} />
           </div>
-          <p>Blocking sign-in prevents new logins. A session that is already open can remain active until its access token expires.</p>
-          {isOwnAccount ? (
-            <div className="admin-user-access-note">You cannot change sign-in access for your own admin account.</div>
+          <p>Blocking an account prevents new sign-ins and protects its synced finance, family, and feedback data. An open page locks within 30 seconds; data already displayed may remain visible until then.</p>
+          {accessSetupWarning ? (
+            <div className="admin-user-access-note" role="status">{accessSetupWarning} Apply the SQL setup before changing account access.</div>
+          ) : isOwnAccount ? (
+            <div className="admin-user-access-note">You cannot change access for your own admin account.</div>
           ) : pendingAction ? (
             <div className="admin-user-action-prompt" role="group" aria-label="Confirm account access change">
-              <strong>{pendingAction === 'suspend' ? `Block future sign-ins for ${id}?` : `Restore sign-in for ${id}?`}</strong>
+              <strong>{pendingAction === 'suspend' ? `Block account access for ${id}?` : `Restore account access for ${id}?`}</strong>
               {actionError && <span className="admin-user-action-error" role="alert">{actionError}</span>}
               <div>
                 <button type="button" className="admin-user-action-cancel" onClick={() => { setPendingAction(''); setActionError(''); }} disabled={actionLoading}>Cancel</button>
@@ -1511,7 +1520,7 @@ function UserDetailsModal({ user, onClose, onCopy, onAccountAction, adminUserId 
             </div>
           ) : (
             <button type="button" className={`admin-user-access-button${suspended ? ' restore' : ''}`} onClick={() => setPendingAction(suspended ? 'reactivate' : 'suspend')}>
-              <ShieldCheck size={14} />{suspended ? 'Restore sign-in' : 'Block future sign-ins'}
+              <ShieldCheck size={14} />{suspended ? 'Restore account access' : 'Block account access'}
             </button>
           )}
         </section>

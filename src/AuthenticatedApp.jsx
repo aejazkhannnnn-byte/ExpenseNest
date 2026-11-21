@@ -1,5 +1,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { CircleAlert, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
 import { supabase } from './supabase';
 import Auth from './Auth';
 import App from './App';
@@ -15,6 +16,8 @@ export default function AuthenticatedApp() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
+  const [accountAccessState, setAccountAccessState] = useState('checking');
+  const [accountAccessError, setAccountAccessError] = useState('');
   const [choiceLoading, setChoiceLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState('Synced');
   const [error, setError] = useState('');
@@ -22,9 +25,28 @@ export default function AuthenticatedApp() {
   const timerRef = useRef(null);
   const userIdRef = useRef(null);
   const readyRef = useRef(false);
+  const accountAccessStateRef = useRef('checking');
   const savingRef = useRef(false);
   const pendingRef = useRef(false);
   const savePromiseRef = useRef(Promise.resolve());
+
+  const updateAccountAccessState = useCallback((state) => {
+    accountAccessStateRef.current = state;
+    setAccountAccessState(state);
+  }, []);
+
+  const verifyAccountAccess = useCallback(async () => {
+    const { data, error: accessError } = await supabase.rpc('is_account_allowed');
+
+    if (accessError) {
+      const migrationMissing = accessError.code === 'PGRST202' || accessError.code === '42883';
+      throw new Error(migrationMissing
+        ? 'Account protection is not installed yet. Ask the administrator to run supabase/suspended_account_access.sql in the Supabase SQL Editor.'
+        : accessError.message || 'Account access could not be verified.');
+    }
+
+    return data === true;
+  }, []);
 
   // Keep current session updated
   useEffect(() => {
@@ -65,12 +87,28 @@ export default function AuthenticatedApp() {
       readyRef.current = false;
       userIdRef.current = session?.user?.id ?? null;
 
-      if (!session?.user?.id) return;
+      if (!session?.user?.id) {
+        updateAccountAccessState('checking');
+        setAccountAccessError('');
+        return;
+      }
 
       setLoading(true);
       setError('');
+      updateAccountAccessState('checking');
+      setAccountAccessError('');
 
       try {
+        const allowed = await verifyAccountAccess();
+
+        if (!active) return;
+
+        if (!allowed) {
+          updateAccountAccessState('blocked');
+          return;
+        }
+
+        updateAccountAccessState('allowed');
         const cloudData = await loadCloudData(session.user.id);
 
         if (!active) return;
@@ -84,10 +122,10 @@ export default function AuthenticatedApp() {
         }
       } catch (err) {
         if (active) {
-          setError(
-            'Cloud data load nahi ho saka: ' +
-            (err?.message || 'Unknown error')
-          );
+          readyRef.current = false;
+          setReady(false);
+          updateAccountAccessState('unavailable');
+          setAccountAccessError(err?.message || 'Account access could not be verified.');
         }
       } finally {
         if (active) setLoading(false);
@@ -99,7 +137,50 @@ export default function AuthenticatedApp() {
     return () => {
       active = false;
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, updateAccountAccessState, verifyAccountAccess]);
+
+  // Recheck access while the app is open so an administrator's suspension takes effect promptly.
+  useEffect(() => {
+    if (!session?.user?.id) return undefined;
+
+    let active = true;
+    const interval = window.setInterval(async () => {
+      try {
+        const allowed = await verifyAccountAccess();
+        if (!active) return;
+
+        if (!allowed) {
+          clearTimeout(timerRef.current);
+          readyRef.current = false;
+          setReady(false);
+          setAccountAccessError('');
+          updateAccountAccessState('blocked');
+          return;
+        }
+
+        const previousState = accountAccessStateRef.current;
+        if (previousState === 'blocked' || previousState === 'unavailable') {
+          window.location.reload();
+          return;
+        }
+
+        setAccountAccessError('');
+        updateAccountAccessState('allowed');
+      } catch (accessError) {
+        if (!active) return;
+        clearTimeout(timerRef.current);
+        readyRef.current = false;
+        setReady(false);
+        setAccountAccessError(accessError?.message || 'Account access could not be verified.');
+        updateAccountAccessState('unavailable');
+      }
+    }, 30_000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [session?.user?.id, updateAccountAccessState, verifyAccountAccess]);
 
   // Save current local data to cloud
   const syncNow = useCallback(async () => {
@@ -319,6 +400,137 @@ export default function AuthenticatedApp() {
   // Login and signup
   if (!session) {
     return <Auth />;
+  }
+
+  if (accountAccessState === 'blocked' || accountAccessState === 'unavailable') {
+    const accessUnavailable = accountAccessState === 'unavailable';
+
+    const signOutLockedAccount = async () => {
+      await supabase.auth.signOut({ scope: 'local' });
+    };
+
+    return (
+      <main className="en-access-lock">
+        <section className="en-access-card" role="alert" aria-labelledby="en-access-title">
+          <span className={`en-access-icon${accessUnavailable ? ' warning' : ''}`}>
+            {accessUnavailable ? <CircleAlert size={25} /> : <ShieldAlert size={25} />}
+          </span>
+          <span className="en-access-kicker">ACCOUNT ACCESS</span>
+          <h1 id="en-access-title">{accessUnavailable ? 'We could not verify access' : 'This account is temporarily blocked'}</h1>
+          <p>
+            {accessUnavailable
+              ? 'ExpenseNest paused this session to protect your data. Ask the administrator to install account protection, then try again.'
+              : 'An administrator has temporarily suspended this account. Synced transactions and family data are protected. Data saved on this device has not been deleted.'}
+          </p>
+          {accessUnavailable && accountAccessError && <div className="en-access-error">{accountAccessError}</div>}
+          <div className="en-access-actions">
+            <button type="button" className="en-access-primary" onClick={() => window.location.reload()}>
+              <RefreshCw size={16} /> Check access again
+            </button>
+            <button type="button" className="en-access-secondary" onClick={signOutLockedAccount}>
+              <LogOut size={16} /> Sign out
+            </button>
+          </div>
+        </section>
+        <style>{`
+          .en-access-lock {
+            min-height: 100vh;
+            box-sizing: border-box;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            color: #edf3ff;
+            background: radial-gradient(ellipse at 50% 0%, #172a4b 0%, #0b1220 55%, #080d17 100%);
+            font-family: var(--font-ui, Inter, sans-serif);
+          }
+          .en-access-card {
+            width: min(100%, 510px);
+            box-sizing: border-box;
+            padding: 38px;
+            border: 1px solid rgba(148, 163, 184, .17);
+            border-radius: 24px;
+            background: rgba(17, 28, 47, .94);
+            box-shadow: 0 28px 90px rgba(0, 0, 0, .38);
+            text-align: center;
+          }
+          .en-access-icon {
+            width: 58px;
+            height: 58px;
+            margin: 0 auto 20px;
+            display: grid;
+            place-items: center;
+            border: 1px solid rgba(248, 113, 113, .22);
+            border-radius: 18px;
+            color: #fb8c8c;
+            background: rgba(127, 29, 29, .19);
+          }
+          .en-access-icon.warning {
+            color: #fbbf70;
+            border-color: rgba(251, 191, 36, .22);
+            background: rgba(120, 70, 16, .2);
+          }
+          .en-access-kicker {
+            color: #91a4c4;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .16em;
+          }
+          .en-access-card h1 {
+            margin: 10px 0 12px;
+            color: #f4f7ff;
+            font-size: clamp(23px, 5vw, 29px);
+            line-height: 1.22;
+            letter-spacing: -.035em;
+          }
+          .en-access-card p {
+            margin: 0;
+            color: #9dacc4;
+            font-size: 14px;
+            line-height: 1.7;
+          }
+          .en-access-error {
+            margin-top: 18px;
+            padding: 12px 14px;
+            border: 1px solid rgba(251, 191, 36, .18);
+            border-radius: 12px;
+            color: #f6d38d;
+            background: rgba(120, 70, 16, .16);
+            font-size: 12px;
+            line-height: 1.6;
+            text-align: left;
+            overflow-wrap: anywhere;
+          }
+          .en-access-actions {
+            margin-top: 26px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+          }
+          .en-access-actions button {
+            min-height: 44px;
+            padding: 0 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border: 1px solid transparent;
+            border-radius: 12px;
+            color: #f6f8ff;
+            font: 600 13px var(--font-ui, Inter, sans-serif);
+            cursor: pointer;
+          }
+          .en-access-primary { background: linear-gradient(110deg, #6676ee, #2fb7a8); }
+          .en-access-secondary { border-color: rgba(148, 163, 184, .2) !important; background: rgba(255, 255, 255, .045); }
+          .en-access-actions button:focus-visible { outline: 2px solid #91a5ff; outline-offset: 3px; }
+          @media (max-width: 520px) {
+            .en-access-card { padding: 30px 22px; }
+            .en-access-actions { flex-direction: column; }
+            .en-access-actions button { width: 100%; }
+          }
+        `}</style>
+      </main>
+    );
   }
 
   // Cloud data not found: ask user what to do
