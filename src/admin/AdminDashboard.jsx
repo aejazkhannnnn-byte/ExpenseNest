@@ -31,6 +31,7 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '../supabase';
+import AdminThemeControl from './AdminThemeControl';
 import './AdminDashboard.css';
 
 const MENU = [
@@ -50,6 +51,27 @@ const SECTION_COPY = {
   Activity: 'A record of administrator account and feedback changes.',
   Settings: 'Admin account and service status.',
 };
+
+const SUSPENSION_DURATIONS = [
+  { value: '24h', label: '24 hours' },
+  { value: '7d', label: '7 days' },
+  { value: '30d', label: '30 days' },
+  { value: 'indefinite', label: 'Indefinitely' },
+];
+
+function suspensionDurationLabel(value) {
+  return SUSPENSION_DURATIONS.find((option) => option.value === value)?.label || 'Indefinitely';
+}
+
+function suspensionExpiryLabel(value) {
+  if (!value) return 'No automatic restore date';
+  const expiry = new Date(value);
+  if (Number.isNaN(expiry.getTime())) return 'Restore date unavailable';
+  if (expiry.getTime() - Date.now() > 5 * 365 * 24 * 60 * 60 * 1000) {
+    return 'No automatic restore date';
+  }
+  return `Access restores ${formatDateTime(value)}`;
+}
 
 function formatNumber(value) {
   if (value === null || value === undefined || value === '') return '—';
@@ -75,10 +97,11 @@ function formatDateTime(value) {
 }
 
 function isUserSuspended(user) {
-  if (String(user?.status || '').toLowerCase() === 'suspended') return true;
-  if (!user?.banned_until) return false;
-  const banExpiresAt = new Date(user.banned_until).getTime();
-  return Number.isFinite(banExpiresAt) && banExpiresAt > Date.now();
+  if (user?.banned_until) {
+    const banExpiresAt = new Date(user.banned_until).getTime();
+    if (Number.isFinite(banExpiresAt)) return banExpiresAt > Date.now();
+  }
+  return String(user?.status || '').toLowerCase() === 'suspended';
 }
 
 function localDateValue(date) {
@@ -88,10 +111,12 @@ function localDateValue(date) {
   return `${year}-${month}-${day}`;
 }
 
-function periodComparison(currentValue, previousValue, days) {
+function periodComparison(currentValue, previousValue, days, metric = 'signups') {
   const current = Number(currentValue || 0);
   const previous = Number(previousValue || 0);
-  if (previous === 0) return current === 0 ? `No signups in this or previous ${days}-day period` : `No signups in the previous ${days}-day period`;
+  if (previous === 0) return current === 0
+    ? `No ${metric} in this or previous ${days}-day period`
+    : `No ${metric} in the previous ${days}-day period`;
   const change = Math.round(((current - previous) / previous) * 100);
   return `${change > 0 ? '+' : ''}${change}% vs previous ${days} days`;
 }
@@ -166,6 +191,53 @@ function RegistrationChart({ months, compact = false }) {
   );
 }
 
+function ActiveAccountsChart({ days }) {
+  const values = Array.isArray(days) ? days : [];
+  const maximum = Math.max(1, ...values.map((day) => Number(day.count) || 0));
+  const plotWidth = 760;
+  const baseline = 166;
+  const plotHeight = 132;
+  const slotWidth = plotWidth / Math.max(values.length, 1);
+  const barWidth = Math.max(2, Math.min(18, slotWidth * 0.58));
+  const labelStep = Math.max(1, Math.ceil(values.length / 7));
+
+  return (
+    <div className="admin-active-chart">
+      <svg viewBox="0 0 800 210" role="img" aria-label="Daily unique accounts that opened ExpenseNest">
+        <defs>
+          <linearGradient id="activeAccountBar" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#7d8bff" />
+            <stop offset="100%" stopColor="#37c7a7" />
+          </linearGradient>
+        </defs>
+        {[0, 1, 2, 3].map((line) => {
+          const y = 34 + (line * 44);
+          return <line key={line} x1="18" x2="782" y1={y} y2={y} className="admin-active-chart-grid" />;
+        })}
+        {values.map((day, index) => {
+          const count = Number(day.count) || 0;
+          const height = count ? Math.max(3, (count / maximum) * plotHeight) : 2;
+          const x = 20 + index * slotWidth + ((slotWidth - barWidth) / 2);
+          const y = baseline - height;
+          const showLabel = index % labelStep === 0 || index === values.length - 1;
+          return (
+            <g key={day.date}>
+              <rect x={x} y={y} width={barWidth} height={height} rx="2" fill="url(#activeAccountBar)">
+                <title>{`${day.label}: ${count} active ${count === 1 ? 'account' : 'accounts'}`}</title>
+              </rect>
+              {showLabel && <text x={x + (barWidth / 2)} y="194" textAnchor="middle" className="admin-active-chart-label">{day.label}</text>}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="admin-active-chart-note">
+        <span><i /> Daily unique accounts</span>
+        <span>Tracking begins after the analytics update is deployed.</span>
+      </div>
+    </div>
+  );
+}
+
 class AdminSectionErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -197,7 +269,7 @@ class AdminSectionErrorBoundary extends Component {
   }
 }
 
-export default function AdminDashboard({ onLogout, adminUser }) {
+export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChange }) {
   const [section, setSection] = useState('Overview');
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
@@ -262,7 +334,7 @@ export default function AdminDashboard({ onLogout, adminUser }) {
         banned_until: suspendedUsers.get(user.id || user.user_id) || user.banned_until || null,
         status: isUserSuspended({ ...user, banned_until: suspendedUsers.get(user.id || user.user_id) || user.banned_until })
           ? 'Suspended'
-          : user.status || 'Registered',
+          : String(user.status || '').toLowerCase() === 'suspended' ? 'Registered' : user.status || 'Registered',
         display_id: displayIds.get(user.id || user.user_id) || '',
       })));
       setUserDisplayIdWarning(displayIdError
@@ -385,10 +457,14 @@ export default function AdminDashboard({ onLogout, adminUser }) {
     }
   }
 
-  async function updateUserSignInAccess(user, action) {
+  async function updateUserSignInAccess(user, action, suspensionDuration) {
     const userId = user.id || user.user_id;
     const { data, error: functionError } = await supabase.functions.invoke('admin-user-actions', {
-      body: { user_id: userId, action },
+      body: {
+        user_id: userId,
+        action,
+        ...(action === 'suspend' ? { suspension_duration: suspensionDuration } : {}),
+      },
     });
 
     if (functionError) {
@@ -419,11 +495,14 @@ export default function AdminDashboard({ onLogout, adminUser }) {
       (item.id || item.user_id) === userId ? { ...item, ...nextUser } : item
     )));
     setSelectedUser(nextUser);
+    const durationUnsupported = action === 'suspend' && data.suspension_duration !== suspensionDuration;
     setToast(data.audit_warning
       ? 'Access changed; audit entry needs review'
-      : action === 'suspend' ? 'Account access blocked' : 'Account access restored');
+      : durationUnsupported
+        ? 'Account was blocked indefinitely; deploy the updated action function for timed access'
+        : action === 'suspend' ? `Account suspended for ${suspensionDurationLabel(suspensionDuration)}` : 'Account access restored');
     await loadActivity();
-    return data;
+    return { ...data, durationUnsupported };
   }
 
   useEffect(() => {
@@ -471,7 +550,7 @@ export default function AdminDashboard({ onLogout, adminUser }) {
     return users.filter((user) => {
       const matchesSearch = !query || [user.email, user.display_id, user.id, user.user_id]
         .some((value) => String(value || '').toLowerCase().includes(query));
-      const status = String(user.status || 'Registered').toLowerCase();
+      const status = isUserSuspended(user) ? 'suspended' : 'registered';
       const matchesFilter = filter === 'All' || status === filter.toLowerCase();
       return matchesSearch && matchesFilter;
     });
@@ -614,6 +693,7 @@ export default function AdminDashboard({ onLogout, adminUser }) {
             <span className={`admin-connection-pill${error && !hasLoadedData ? ' needs-attention' : ''}`}>
               <span />{error && !hasLoadedData ? 'Service issue' : 'Admin workspace'}
             </span>
+            <AdminThemeControl theme={theme} onChange={onThemeChange} variant="topbar" />
             <button
               type="button"
               className="admin-refresh"
@@ -723,7 +803,7 @@ export default function AdminDashboard({ onLogout, adminUser }) {
               )}
 
               {section === 'Settings' && (
-                <SettingsSection adminName={adminName} adminEmail={adminEmail} serviceReady={hasLoadedData} loading={loading} />
+                <SettingsSection adminName={adminName} adminEmail={adminEmail} serviceReady={hasLoadedData} loading={loading} theme={theme} onThemeChange={onThemeChange} />
               )}
             </>
           )}
@@ -898,6 +978,8 @@ function UsersSection({ users, loadedCount, search, setSearch, filter, setFilter
 
 function AnalyticsSection({ data, loading, error, range, setRange, onRefresh }) {
   const registrationMonths = Array.isArray(data?.monthly_signups) ? data.monthly_signups : [];
+  const activeTrackingReady = Array.isArray(data?.daily_active_users)
+    && Number.isFinite(Number(data?.users?.active));
   const metrics = data ? [
     {
       title: `New users · ${data.period.days} days`,
@@ -912,6 +994,24 @@ function AnalyticsSection({ data, loading, error, range, setRange, onRefresh }) 
       note: 'All registered accounts',
       icon: Activity,
       tone: 'mint',
+    },
+    {
+      title: 'Active accounts',
+      value: activeTrackingReady ? formatNumber(data.users.active) : '—',
+      note: activeTrackingReady
+        ? periodComparison(data.users.active, data.users.previous_active, data.period.days, 'active accounts')
+        : 'Tracking setup required',
+      icon: Activity,
+      tone: 'blue',
+    },
+    {
+      title: 'Returning accounts',
+      value: activeTrackingReady ? formatNumber(data.users.returning) : '—',
+      note: activeTrackingReady
+        ? `${Number(data.users.returning_rate || 0).toFixed(1)}% of active accounts in this period`
+        : 'Tracking setup required',
+      icon: UsersRound,
+      tone: 'violet',
     },
     {
       title: 'Feedback received',
@@ -933,7 +1033,7 @@ function AnalyticsSection({ data, loading, error, range, setRange, onRefresh }) 
     <div className="admin-page-content">
       <section className="admin-panel admin-analytics-control-panel">
         <div className="admin-panel-heading">
-          <div><span className="admin-panel-kicker">PLATFORM REPORT</span><h2>Real activity from your database</h2><p>Counts are aggregated on the server and limited to administrator accounts.</p></div>
+          <div><span className="admin-panel-kicker">PLATFORM REPORT</span><h2>Real activity from your database</h2><p>Server-side aggregates. No individual transaction details are returned.</p></div>
           <div className="admin-analytics-actions">
             <label className="admin-analytics-range"><CalendarDays size={14} /><span className="sr-only">Analytics date range</span>
               <select value={range} onChange={(event) => setRange(Number(event.target.value))} aria-label="Analytics date range">
@@ -973,6 +1073,20 @@ function AnalyticsSection({ data, loading, error, range, setRange, onRefresh }) 
           <span className="admin-period-chip"><CalendarDays size={14} /> Six months</span>
         </div>
         <RegistrationChart months={registrationMonths} />
+      </section>
+      <section className="admin-panel admin-analytics-panel">
+        <div className="admin-panel-heading">
+          <div><span className="admin-panel-kicker">ACCOUNT ACTIVITY</span><h2>Daily active accounts</h2><p>Unique accounts that opened ExpenseNest each day. Earlier dates are not backfilled.</p></div>
+          <span className="admin-period-chip"><Activity size={14} /> {data.period.days} days</span>
+        </div>
+        {activeTrackingReady ? (
+          <ActiveAccountsChart days={data.daily_active_users} />
+        ) : (
+          <div className="admin-feedback-error" role="status">
+            <CircleAlert size={16} />
+            <span>Run the updated supabase/admin_analytics.sql and deploy the app to start collecting daily activity.</span>
+          </div>
+        )}
       </section>
       <section className="admin-analytics-detail-grid">
         <article className="admin-panel admin-analytics-detail-panel">
@@ -1171,6 +1285,7 @@ function ActivitySection({ items, loading, error, onRefresh }) {
       details.user_display_id,
       details.category,
       details.requested_action,
+      details.suspension_duration,
       item.target_id,
       details.from,
       details.to,
@@ -1191,7 +1306,9 @@ function ActivitySection({ items, loading, error, onRefresh }) {
           isAccountAction ? (details.requested_action || item.action) : 'Feedback status changed',
           isAccountAction ? details.user_display_id || item.target_id || '' : details.user_email || details.category || '',
           isAccountAction ? details.result || 'processing' : `${statusLabels[details.from] || details.from || ''} → ${statusLabels[details.to] || details.to || ''}`,
-          isAccountAction ? details.reason || '' : details.category || '',
+          isAccountAction
+            ? details.suspension_duration ? `Suspension duration: ${suspensionDurationLabel(details.suspension_duration)}` : details.reason || ''
+            : details.category || '',
           item.target_id || '',
         ];
       }),
@@ -1296,6 +1413,7 @@ function ActivitySection({ items, loading, error, onRefresh }) {
                           )}
                         </div>
                         <p>{target}</p>
+                        {isAccountAction && details.suspension_duration && <small>Suspension duration: {suspensionDurationLabel(details.suspension_duration)}</small>}
                         <small><ShieldCheck size={12} /> {item.actor_email || `Admin ${String(item.actor_id || '').slice(0, 8) || 'account'}`} <span>·</span> <Clock3 size={12} /> {formatDateTime(item.created_at)}</small>
                       </div>
                     </article>
@@ -1311,15 +1429,22 @@ function ActivitySection({ items, loading, error, onRefresh }) {
   );
 }
 
-function SettingsSection({ adminName, adminEmail, serviceReady, loading }) {
+function SettingsSection({ adminName, adminEmail, serviceReady, loading, theme, onThemeChange }) {
   const rows = [
     { icon: ShieldCheck, title: 'Administrator access', detail: 'Signed in through Supabase and checked against the admin list.', status: 'Verified', ready: true },
     { icon: Database, title: 'Dashboard data service', detail: 'Supabase Edge Function: admin-dashboard.', status: loading ? 'Updating' : serviceReady ? 'Responding' : 'Not checked', ready: serviceReady },
-    { icon: BarChart3, title: 'Analytics source', detail: 'Active user and page view metrics are not configured in the current response.', status: 'Not connected', ready: false },
+    { icon: BarChart3, title: 'Usage reporting', detail: 'Daily app activity is aggregated in Admin Analytics. Page views and transaction details are not tracked.', status: 'Aggregate only', ready: true },
   ];
 
   return (
     <div className="admin-settings-layout">
+      <section className="admin-panel admin-appearance-panel">
+        <div className="admin-panel-heading"><div><span className="admin-panel-kicker">APPEARANCE</span><h2>Admin theme</h2><p>Choose the same theme used across your ExpenseNest account.</p></div></div>
+        <div className="admin-appearance-controls">
+          <AdminThemeControl theme={theme} onChange={onThemeChange} variant="segmented" />
+          <span className="admin-appearance-current">Currently using <strong>{theme === 'dark' ? 'Dark' : 'Light'} mode</strong></span>
+        </div>
+      </section>
       <section className="admin-panel admin-account-panel">
         <div className="admin-panel-heading"><div><span className="admin-panel-kicker">ADMIN ACCOUNT</span><h2>Workspace profile</h2><p>Account currently signed in to this admin portal.</p></div></div>
         <div className="admin-account-summary">
@@ -1367,7 +1492,9 @@ function UserTable({ users, onViewUser, emptyTitle, emptyMessage }) {
             const email = user.email || 'Email not available';
             const id = user.id || user.user_id || email || index;
             const displayId = user.display_id || user.id || user.user_id || 'User ID not available';
-            const status = user.status || 'Registered';
+            const status = isUserSuspended(user)
+              ? 'Suspended'
+              : String(user.status || '').toLowerCase() === 'suspended' ? 'Registered' : user.status || 'Registered';
             return (
               <tr key={id}>
                 <td>
@@ -1394,11 +1521,15 @@ function UserDetailsModal({ user, onClose, onCopy, onAccountAction, adminUserId,
   const userId = user.id || user.user_id;
   const initial = (email || 'U').charAt(0).toUpperCase();
   const suspended = isUserSuspended(user);
+  const accountStatusLabel = suspended
+    ? 'Suspended'
+    : String(user.status || '').toLowerCase() === 'suspended' ? 'Registered' : user.status || 'Registered';
   const isOwnAccount = userId === adminUserId;
   const [health, setHealth] = useState(null);
   const [healthLoading, setHealthLoading] = useState(true);
   const [healthError, setHealthError] = useState('');
   const [pendingAction, setPendingAction] = useState('');
+  const [suspensionDuration, setSuspensionDuration] = useState('7d');
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
 
@@ -1451,7 +1582,7 @@ function UserDetailsModal({ user, onClose, onCopy, onAccountAction, adminUserId,
     setActionLoading(true);
     setActionError('');
     try {
-      await onAccountAction(user, pendingAction);
+      await onAccountAction(user, pendingAction, suspensionDuration);
       setPendingAction('');
     } catch (requestError) {
       setActionError(requestError.message || 'The account access change could not be applied.');
@@ -1467,12 +1598,12 @@ function UserDetailsModal({ user, onClose, onCopy, onAccountAction, adminUserId,
           <div><span className="admin-panel-kicker">ACCOUNT DETAILS</span><h2 id="admin-user-modal-title">User profile</h2></div>
           <button type="button" className="admin-icon-button" onClick={onClose} aria-label="Close details"><X size={18} /></button>
         </div>
-        <div className="admin-modal-profile"><span className="admin-modal-avatar">{initial}</span><div><strong>{email || 'User account'}</strong><small>{user.status || 'Registered'}</small></div></div>
+        <div className="admin-modal-profile"><span className="admin-modal-avatar">{initial}</span><div><strong>{email || 'User account'}</strong><small>{accountStatusLabel}</small></div></div>
         <div className="admin-modal-details">
           <div><span>Email address</span><strong>{email || 'Not available'}</strong>{email && <button type="button" onClick={() => onCopy(email, 'Email')}><Copy size={14} /> Copy email</button>}</div>
           <div><span>User ID</span><strong className="admin-mono-text">{id || 'Not available'}</strong>{id && <button type="button" onClick={() => onCopy(id, 'User ID')}><Copy size={14} /> Copy ID</button>}</div>
           <div><span>Registration date</span><strong>{formatDateTime(user.created_at)}</strong></div>
-          <div><span>Account status</span><strong>{user.status || 'Registered'}</strong></div>
+          <div><span>Account status</span><strong>{accountStatusLabel}</strong></div>
         </div>
         <section className="admin-user-health" aria-label="Account health">
           <div className="admin-user-health-heading"><div><span className="admin-panel-kicker">ACCOUNT HEALTH</span><h3>Usage overview</h3></div><Clock3 size={16} /></div>
@@ -1502,13 +1633,24 @@ function UserDetailsModal({ user, onClose, onCopy, onAccountAction, adminUserId,
             <ShieldCheck size={17} />
           </div>
           <p>Blocking an account prevents new sign-ins and protects its synced finance, family, and feedback data. An open page locks within 30 seconds; data already displayed may remain visible until then.</p>
+          {suspended && <div className="admin-user-access-expiry">{suspensionExpiryLabel(user.banned_until)}</div>}
           {accessSetupWarning ? (
             <div className="admin-user-access-note" role="status">{accessSetupWarning} Apply the SQL setup before changing account access.</div>
           ) : isOwnAccount ? (
             <div className="admin-user-access-note">You cannot change access for your own admin account.</div>
           ) : pendingAction ? (
             <div className="admin-user-action-prompt" role="group" aria-label="Confirm account access change">
-              <strong>{pendingAction === 'suspend' ? `Block account access for ${id}?` : `Restore account access for ${id}?`}</strong>
+              <strong>{pendingAction === 'suspend'
+                ? `Block account access for ${id} for ${suspensionDurationLabel(suspensionDuration)}?`
+                : `Restore account access for ${id}?`}</strong>
+              {pendingAction === 'suspend' && (
+                <label className="admin-suspension-duration">
+                  <span>Suspension duration</span>
+                  <select value={suspensionDuration} onChange={(event) => setSuspensionDuration(event.target.value)} disabled={actionLoading}>
+                    {SUSPENSION_DURATIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+              )}
               {actionError && <span className="admin-user-action-error" role="alert">{actionError}</span>}
               <div>
                 <button type="button" className="admin-user-action-cancel" onClick={() => { setPendingAction(''); setActionError(''); }} disabled={actionLoading}>Cancel</button>

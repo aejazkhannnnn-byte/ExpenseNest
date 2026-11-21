@@ -26,6 +26,9 @@ export default function AuthenticatedApp() {
   const userIdRef = useRef(null);
   const readyRef = useRef(false);
   const accountAccessStateRef = useRef('checking');
+  const activityLoggedForRef = useRef(null);
+  const activityAttemptRef = useRef({ key: null, at: 0 });
+  const activityTrackingDisabledRef = useRef(false);
   const savingRef = useRef(false);
   const pendingRef = useRef(false);
   const savePromiseRef = useRef(Promise.resolve());
@@ -46,6 +49,36 @@ export default function AuthenticatedApp() {
     }
 
     return data === true;
+  }, []);
+
+  const recordAppActivity = useCallback(async (userId) => {
+    if (!userId || activityTrackingDisabledRef.current) return;
+
+    const dateParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date());
+    const localDate = `${dateParts.find((part) => part.type === 'year')?.value}-${dateParts.find((part) => part.type === 'month')?.value}-${dateParts.find((part) => part.type === 'day')?.value}`;
+    const activityKey = `${userId}:${localDate}`;
+    if (activityLoggedForRef.current === activityKey) return;
+    if (activityAttemptRef.current.key === activityKey
+      && Date.now() - activityAttemptRef.current.at < 15 * 60 * 1000) return;
+    activityAttemptRef.current = { key: activityKey, at: Date.now() };
+
+    try {
+      const { error: activityError } = await supabase.rpc('record_account_activity');
+      if (activityError) {
+        if (activityError.code === 'PGRST202' || activityError.code === '42883') {
+          activityTrackingDisabledRef.current = true;
+        }
+        return;
+      }
+      activityLoggedForRef.current = activityKey;
+    } catch {
+      // Usage analytics are optional; a tracking outage must not interrupt financial data access.
+    }
   }, []);
 
   // Keep current session updated
@@ -109,6 +142,7 @@ export default function AuthenticatedApp() {
         }
 
         updateAccountAccessState('allowed');
+        void recordAppActivity(session.user.id);
         const cloudData = await loadCloudData(session.user.id);
 
         if (!active) return;
@@ -137,7 +171,7 @@ export default function AuthenticatedApp() {
     return () => {
       active = false;
     };
-  }, [session?.user?.id, updateAccountAccessState, verifyAccountAccess]);
+  }, [session?.user?.id, recordAppActivity, updateAccountAccessState, verifyAccountAccess]);
 
   // Recheck access while the app is open so an administrator's suspension takes effect promptly.
   useEffect(() => {
@@ -157,6 +191,8 @@ export default function AuthenticatedApp() {
           updateAccountAccessState('blocked');
           return;
         }
+
+        void recordAppActivity(session.user.id);
 
         const previousState = accountAccessStateRef.current;
         if (previousState === 'blocked' || previousState === 'unavailable') {
@@ -180,7 +216,7 @@ export default function AuthenticatedApp() {
       active = false;
       window.clearInterval(interval);
     };
-  }, [session?.user?.id, updateAccountAccessState, verifyAccountAccess]);
+  }, [session?.user?.id, recordAppActivity, updateAccountAccessState, verifyAccountAccess]);
 
   // Save current local data to cloud
   const syncNow = useCallback(async () => {
