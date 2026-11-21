@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   ArrowRight,
@@ -6,6 +6,7 @@ import {
   BarChart3,
   CalendarDays,
   Check,
+  ChevronLeft,
   ChevronRight,
   CircleAlert,
   Clock3,
@@ -43,10 +44,10 @@ const MENU = [
 
 const SECTION_COPY = {
   Overview: 'A clear view of your platform activity.',
-  Users: 'Search and review registered ExpenseNest accounts.',
-  Analytics: 'Registration activity from the admin data service.',
+  Users: 'Review registered accounts and their sign-in access.',
+  Analytics: 'Server-counted signups, feedback, and shared-family activity.',
   Feedback: 'Review the state of your feedback inbox.',
-  Activity: 'A record of administrator changes to feedback status.',
+  Activity: 'A record of administrator account and feedback changes.',
   Settings: 'Admin account and service status.',
 };
 
@@ -58,7 +59,10 @@ function formatNumber(value) {
 
 function formatDate(value, options = { day: 'numeric', month: 'short', year: 'numeric' }) {
   if (!value) return 'Not available';
-  const date = new Date(value);
+  const dateOnly = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const date = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(value);
   if (Number.isNaN(date.getTime())) return 'Not available';
   return date.toLocaleDateString('en-IN', options);
 }
@@ -68,6 +72,28 @@ function formatDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Not available';
   return date.toLocaleString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function isUserSuspended(user) {
+  if (String(user?.status || '').toLowerCase() === 'suspended') return true;
+  if (!user?.banned_until) return false;
+  const banExpiresAt = new Date(user.banned_until).getTime();
+  return Number.isFinite(banExpiresAt) && banExpiresAt > Date.now();
+}
+
+function localDateValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function periodComparison(currentValue, previousValue, days) {
+  const current = Number(currentValue || 0);
+  const previous = Number(previousValue || 0);
+  if (previous === 0) return current === 0 ? `No signups in this or previous ${days}-day period` : `No signups in the previous ${days}-day period`;
+  const change = Math.round(((current - previous) / previous) * 100);
+  return `${change > 0 ? '+' : ''}${change}% vs previous ${days} days`;
 }
 
 function csvCell(value) {
@@ -140,10 +166,43 @@ function RegistrationChart({ months, compact = false }) {
   );
 }
 
+class AdminSectionErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error(`Admin ${this.props.sectionName} section failed to render:`, error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <section className="admin-error-state admin-section-render-error" role="alert">
+          <span className="admin-empty-icon"><CircleAlert size={22} /></span>
+          <h2>{this.props.sectionName} could not load</h2>
+          <p>{this.state.error.message || 'An unexpected page error occurred.'}</p>
+          <button type="button" className="admin-primary-button" onClick={() => window.location.reload()}>
+            <RefreshCw size={16} /> Reload admin page
+          </button>
+        </section>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function AdminDashboard({ onLogout, adminUser }) {
   const [section, setSection] = useState('Overview');
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
+  const [userDisplayIdWarning, setUserDisplayIdWarning] = useState('');
+  const [userAccessSetupWarning, setUserAccessSetupWarning] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -159,6 +218,10 @@ export default function AdminDashboard({ onLogout, adminUser }) {
   const [activityItems, setActivityItems] = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState('');
+  const [analyticsRange, setAnalyticsRange] = useState(30);
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState('');
 
   const adminEmail = adminUser?.email || '';
   const adminName = adminUser?.user_metadata?.full_name || adminEmail.split('@')[0] || 'Admin';
@@ -177,10 +240,31 @@ export default function AdminDashboard({ onLogout, adminUser }) {
       if (functionError) throw functionError;
       if (!data?.success) throw new Error(data?.message || 'The admin data service could not load dashboard data.');
 
-      setStats(data.stats || {});
-      setUsers(Array.isArray(data.users)
+      const dashboardUsers = Array.isArray(data.users)
         ? data.users.filter((user) => user && typeof user === 'object')
-        : []);
+        : [];
+      const { data: displayIdRows, error: displayIdError } = await supabase
+        .from('user_display_ids')
+        .select('user_id, display_id');
+      const { data: suspendedRows, error: suspendedError } = await supabase.rpc('get_admin_user_suspensions');
+      const displayIds = new Map((displayIdRows || []).map((row) => [row.user_id, row.display_id]));
+      const suspendedUsers = new Map((suspendedRows || []).map((row) => [row.user_id, row.banned_until]));
+
+      setStats(data.stats || {});
+      setUsers(dashboardUsers.map((user) => ({
+        ...user,
+        banned_until: suspendedUsers.get(user.id || user.user_id) || user.banned_until || null,
+        status: isUserSuspended({ ...user, banned_until: suspendedUsers.get(user.id || user.user_id) || user.banned_until })
+          ? 'Suspended'
+          : user.status || 'Registered',
+        display_id: displayIds.get(user.id || user.user_id) || '',
+      })));
+      setUserDisplayIdWarning(displayIdError
+        ? 'Short IDs are not set up yet. Run supabase/user_display_ids.sql in the Supabase SQL Editor.'
+        : '');
+      setUserAccessSetupWarning(suspendedError
+        ? 'Account access controls need setup. Run supabase/admin_user_actions.sql in Supabase SQL Editor.'
+        : '');
       setLastUpdated(new Date());
     } catch (err) {
       setError(err.message || 'Dashboard loading failed.');
@@ -241,6 +325,35 @@ export default function AdminDashboard({ onLogout, adminUser }) {
     }
   }, []);
 
+  const loadAnalytics = useCallback(async () => {
+    setAnalyticsLoading(true);
+    setAnalyticsError('');
+
+    try {
+      const toDate = new Date();
+      const fromDate = new Date(toDate);
+      fromDate.setDate(fromDate.getDate() - analyticsRange + 1);
+
+      const { data, error: rpcError } = await supabase.rpc('get_admin_analytics', {
+        _from_date: localDateValue(fromDate),
+        _to_date: localDateValue(toDate),
+      });
+
+      if (rpcError) {
+        const missingFunction = rpcError.code === 'PGRST202' || rpcError.code === '42883';
+        throw new Error(missingFunction
+          ? 'Admin analytics is not set up yet. Run supabase/admin_analytics.sql in the Supabase SQL Editor.'
+          : rpcError.message || 'Could not load analytics.');
+      }
+
+      setAnalyticsData(data || null);
+    } catch (err) {
+      setAnalyticsError(err.message || 'Could not load analytics.');
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [analyticsRange]);
+
   async function updateFeedbackStatus(feedbackId, status) {
     setUpdatingFeedbackId(feedbackId);
     setFeedbackError('');
@@ -266,6 +379,47 @@ export default function AdminDashboard({ onLogout, adminUser }) {
     }
   }
 
+  async function updateUserSignInAccess(user, action) {
+    const userId = user.id || user.user_id;
+    const { data, error: functionError } = await supabase.functions.invoke('admin-user-actions', {
+      body: { user_id: userId, action },
+    });
+
+    if (functionError) {
+      let message = functionError.message || 'The account action service could not be reached.';
+      try {
+        const response = functionError.context;
+        if (response instanceof Response) {
+          if (response.status === 404) {
+            message = 'Deploy supabase/functions/admin-user-actions and configure its server secret before using this control.';
+          } else {
+            const responseBody = await response.clone().json();
+            message = responseBody?.message || message;
+          }
+        }
+      } catch {
+        // Keep the Functions client message when the response has no JSON body.
+      }
+      throw new Error(message);
+    }
+    if (!data?.success) throw new Error(data?.message || 'The account access change was not applied.');
+
+    const nextUser = {
+      ...user,
+      status: action === 'suspend' ? 'Suspended' : 'Registered',
+      banned_until: data.banned_until || null,
+    };
+    setUsers((current) => current.map((item) => (
+      (item.id || item.user_id) === userId ? { ...item, ...nextUser } : item
+    )));
+    setSelectedUser(nextUser);
+    setToast(data.audit_warning
+      ? 'Access changed; audit entry needs review'
+      : action === 'suspend' ? 'Sign-in blocked for this account' : 'Sign-in restored for this account');
+    await loadActivity();
+    return data;
+  }
+
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
@@ -281,6 +435,10 @@ export default function AdminDashboard({ onLogout, adminUser }) {
   useEffect(() => {
     if (section === 'Activity') loadActivity();
   }, [section, loadActivity]);
+
+  useEffect(() => {
+    if (section === 'Analytics') loadAnalytics();
+  }, [section, loadAnalytics]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -305,7 +463,7 @@ export default function AdminDashboard({ onLogout, adminUser }) {
   const filteredUsers = useMemo(() => {
     const query = search.trim().toLowerCase();
     return users.filter((user) => {
-      const matchesSearch = !query || [user.email, user.id, user.user_id]
+      const matchesSearch = !query || [user.email, user.display_id, user.id, user.user_id]
         .some((value) => String(value || '').toLowerCase().includes(query));
       const status = String(user.status || 'Registered').toLowerCase();
       const matchesFilter = filter === 'All' || status === filter.toLowerCase();
@@ -371,7 +529,7 @@ export default function AdminDashboard({ onLogout, adminUser }) {
       ['Email', 'User ID', 'Registration date', 'Status'],
       ...exportedUsers.map((user) => [
         user.email || '',
-        user.id || user.user_id || '',
+        user.display_id || user.id || user.user_id || '',
         user.created_at || '',
         user.status || 'Registered',
       ]),
@@ -453,11 +611,11 @@ export default function AdminDashboard({ onLogout, adminUser }) {
             <button
               type="button"
               className="admin-refresh"
-              onClick={section === 'Feedback' ? loadFeedback : section === 'Activity' ? loadActivity : loadDashboard}
-              disabled={section === 'Feedback' ? feedbackLoading : section === 'Activity' ? activityLoading : loading}
+              onClick={section === 'Feedback' ? loadFeedback : section === 'Activity' ? loadActivity : section === 'Analytics' ? loadAnalytics : loadDashboard}
+              disabled={section === 'Feedback' ? feedbackLoading : section === 'Activity' ? activityLoading : section === 'Analytics' ? analyticsLoading : loading}
             >
-              <RefreshCw size={15} className={(section === 'Feedback' ? feedbackLoading : section === 'Activity' ? activityLoading : loading) ? 'is-spinning' : ''} />
-              <span>{(section === 'Feedback' ? feedbackLoading : section === 'Activity' ? activityLoading : loading) ? 'Updating' : 'Refresh data'}</span>
+              <RefreshCw size={15} className={(section === 'Feedback' ? feedbackLoading : section === 'Activity' ? activityLoading : section === 'Analytics' ? analyticsLoading : loading) ? 'is-spinning' : ''} />
+              <span>{(section === 'Feedback' ? feedbackLoading : section === 'Activity' ? activityLoading : section === 'Analytics' ? analyticsLoading : loading) ? 'Updating' : 'Refresh data'}</span>
             </button>
             <span className="admin-topbar-avatar" title={adminEmail || adminName}>{adminInitial}</span>
           </div>
@@ -509,20 +667,31 @@ export default function AdminDashboard({ onLogout, adminUser }) {
               )}
 
               {section === 'Users' && (
-                <UsersSection
-                  users={filteredUsers}
-                  loadedCount={users.length}
-                  search={search}
-                  setSearch={setSearch}
-                  filter={filter}
-                  setFilter={setFilter}
-                  onViewUser={setSelectedUser}
-                  onExport={exportUsersCsv}
-                />
+                <AdminSectionErrorBoundary sectionName="Users">
+                  <UsersSection
+                    users={filteredUsers}
+                    loadedCount={users.length}
+                    search={search}
+                    setSearch={setSearch}
+                    filter={filter}
+                    setFilter={setFilter}
+                    idSetupWarning={userDisplayIdWarning}
+                    accessSetupWarning={userAccessSetupWarning}
+                    onViewUser={setSelectedUser}
+                    onExport={exportUsersCsv}
+                  />
+                </AdminSectionErrorBoundary>
               )}
 
               {section === 'Analytics' && (
-                <AnalyticsSection metrics={metrics} monthlyRegistrations={monthlyRegistrations} />
+                <AnalyticsSection
+                  data={analyticsData}
+                  loading={analyticsLoading}
+                  error={analyticsError}
+                  range={analyticsRange}
+                  setRange={setAnalyticsRange}
+                  onRefresh={loadAnalytics}
+                />
               )}
 
               {section === 'Feedback' && (
@@ -562,6 +731,8 @@ export default function AdminDashboard({ onLogout, adminUser }) {
           user={selectedUser}
           onClose={() => setSelectedUser(null)}
           onCopy={copyUserInfo}
+          onAccountAction={updateUserSignInAccess}
+          adminUserId={adminUser?.id}
         />
       )}
     </div>
@@ -641,15 +812,36 @@ function OverviewSection({ adminName, metrics, monthlyRegistrations, recentUsers
   );
 }
 
-function UsersSection({ users, loadedCount, search, setSearch, filter, setFilter, onViewUser, onExport }) {
+function UsersSection({ users, loadedCount, search, setSearch, filter, setFilter, idSetupWarning, accessSetupWarning, onViewUser, onExport }) {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, filter, startDate, endDate, pageSize]);
+
+  const dateFilteredUsers = users.filter((user) => {
+    const createdDate = String(user.created_at || '').slice(0, 10);
+    if (startDate && (!createdDate || createdDate < startDate)) return false;
+    if (endDate && (!createdDate || createdDate > endDate)) return false;
+    return true;
+  });
+  const pageCount = Math.max(1, Math.ceil(dateFilteredUsers.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const firstResult = dateFilteredUsers.length ? ((currentPage - 1) * pageSize) + 1 : 0;
+  const lastResult = Math.min(currentPage * pageSize, dateFilteredUsers.length);
+  const pageUsers = dateFilteredUsers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <section className="admin-panel admin-users-panel">
       <div className="admin-panel-heading admin-users-heading">
-        <div><span className="admin-panel-kicker">ACCOUNT DIRECTORY</span><h2>User management</h2><p>{users.length} matching {users.length === 1 ? 'account' : 'accounts'}</p></div>
+        <div><span className="admin-panel-kicker">ACCOUNT DIRECTORY</span><h2>User management</h2><p>{dateFilteredUsers.length} matching {dateFilteredUsers.length === 1 ? 'account' : 'accounts'} in the loaded records</p></div>
         <div className="admin-users-heading-actions">
-          <span className="admin-count-chip">{users.length} <small>shown / {loadedCount} loaded</small></span>
-          <button type="button" className="admin-export-button" onClick={() => onExport(users)} disabled={!users.length} title="Export the currently shown users to CSV">
-            <Download size={14} /> Export shown
+          <span className="admin-count-chip">{dateFilteredUsers.length} <small>match / {loadedCount} loaded</small></span>
+          <button type="button" className="admin-export-button" onClick={() => onExport(dateFilteredUsers)} disabled={!dateFilteredUsers.length} title="Export all users matching the current search, status, and date filters">
+            <Download size={14} /> Export results
           </button>
         </div>
       </div>
@@ -664,35 +856,138 @@ function UsersSection({ users, loadedCount, search, setSearch, filter, setFilter
           <select value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Filter users by status">
             <option value="All">All statuses</option>
             <option value="Registered">Registered</option>
+            <option value="Suspended">Suspended</option>
           </select>
         </label>
+        <div className="admin-date-filter" aria-label="Filter users by registration date">
+          <CalendarDays size={15} aria-hidden="true" />
+          <label><span>From</span><input type="date" value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} aria-label="Registration date from" /></label>
+          <label><span>To</span><input type="date" value={endDate} min={startDate || undefined} onChange={(event) => setEndDate(event.target.value)} aria-label="Registration date to" /></label>
+        </div>
       </div>
-      <UserTable users={users} onViewUser={onViewUser} emptyTitle="No users match this search" emptyMessage="Try a different email, user ID, or status filter." />
+      {idSetupWarning && <div className="admin-feedback-error admin-user-id-warning" role="status"><CircleAlert size={15} /><span>{idSetupWarning}</span></div>}
+      {accessSetupWarning && <div className="admin-feedback-error admin-user-id-warning" role="status"><CircleAlert size={15} /><span>{accessSetupWarning}</span></div>}
+      <UserTable users={pageUsers} onViewUser={onViewUser} emptyTitle="No users match these filters" emptyMessage="Try another search, status, or registration date range." />
+      {dateFilteredUsers.length > 0 && (
+        <nav className="admin-user-pagination" aria-label="User list pages">
+          <span aria-live="polite">Showing {firstResult}–{lastResult} of {dateFilteredUsers.length}</span>
+          <label>Rows per page
+            <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} aria-label="Rows per page">
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+            </select>
+          </label>
+          <div className="admin-user-page-controls">
+            <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={currentPage <= 1} aria-label="Previous page"><ChevronLeft size={15} /></button>
+            <strong>Page {currentPage} of {pageCount}</strong>
+            <button type="button" onClick={() => setPage((current) => Math.min(pageCount, current + 1))} disabled={currentPage >= pageCount} aria-label="Next page"><ChevronRight size={15} /></button>
+          </div>
+        </nav>
+      )}
     </section>
   );
 }
 
-function AnalyticsSection({ metrics, monthlyRegistrations }) {
+function AnalyticsSection({ data, loading, error, range, setRange, onRefresh }) {
+  const registrationMonths = Array.isArray(data?.monthly_signups) ? data.monthly_signups : [];
+  const metrics = data ? [
+    {
+      title: `New users · ${data.period.days} days`,
+      value: formatNumber(data.users.new),
+      note: periodComparison(data.users.new, data.users.previous_new, data.period.days),
+      icon: UsersRound,
+      tone: 'violet',
+    },
+    {
+      title: 'Total users',
+      value: formatNumber(data.users.total),
+      note: 'All registered accounts',
+      icon: Activity,
+      tone: 'mint',
+    },
+    {
+      title: 'Feedback received',
+      value: formatNumber(data.feedback.total),
+      note: `Selected ${data.period.days}-day period`,
+      icon: MessageSquareText,
+      tone: 'blue',
+    },
+    {
+      title: 'Shared transactions',
+      value: formatNumber(data.transactions.count),
+      note: `Based on transaction date · ${data.period.days} days`,
+      icon: BarChart3,
+      tone: 'amber',
+    },
+  ] : [];
+
   return (
     <div className="admin-page-content">
-      <section className="admin-metrics-grid" aria-label="Analytics summary">
-        {metrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
+      <section className="admin-panel admin-analytics-control-panel">
+        <div className="admin-panel-heading">
+          <div><span className="admin-panel-kicker">PLATFORM REPORT</span><h2>Real activity from your database</h2><p>Counts are aggregated on the server and limited to administrator accounts.</p></div>
+          <div className="admin-analytics-actions">
+            <label className="admin-analytics-range"><CalendarDays size={14} /><span className="sr-only">Analytics date range</span>
+              <select value={range} onChange={(event) => setRange(Number(event.target.value))} aria-label="Analytics date range">
+                <option value={7}>Last 7 days</option>
+                <option value={30}>Last 30 days</option>
+                <option value={90}>Last 90 days</option>
+              </select>
+            </label>
+            <button type="button" className="admin-feedback-refresh" onClick={onRefresh} disabled={loading} aria-label="Refresh analytics">
+              <RefreshCw size={15} className={loading ? 'is-spinning' : ''} />
+            </button>
+          </div>
+        </div>
+        {error && <div className="admin-feedback-error" role="alert"><CircleAlert size={16} /><span>{error}</span></div>}
+        {loading && !data ? (
+          <div className="admin-feedback-loading"><LoaderCircle size={20} className="is-spinning" /> Loading secure analytics…</div>
+        ) : !data ? (
+          <div className="admin-empty-state admin-feedback-empty">
+            <span className="admin-empty-icon"><Database size={22} /></span>
+            <h3>Analytics are not available yet</h3>
+            <p>Apply the admin analytics SQL migration, then refresh this page.</p>
+          </div>
+        ) : (
+          <>
+            <div className="admin-analytics-period-note"><CalendarDays size={13} /> {formatDate(data.period.from)} – {formatDate(data.period.to)}</div>
+            <section className="admin-metrics-grid" aria-label="Analytics summary">
+              {metrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
+            </section>
+          </>
+        )}
       </section>
+
+      {data && <>
       <section className="admin-panel admin-analytics-panel">
         <div className="admin-panel-heading">
-          <div><span className="admin-panel-kicker">REGISTRATION ACTIVITY</span><h2>Monthly registrations</h2><p>Calculated from user records returned by the admin data service.</p></div>
+          <div><span className="admin-panel-kicker">SIGNUP TREND</span><h2>Monthly registrations</h2><p>Exact account totals from Supabase Auth, including accounts beyond the user table page limit.</p></div>
           <span className="admin-period-chip"><CalendarDays size={14} /> Six months</span>
         </div>
-        <RegistrationChart months={monthlyRegistrations} />
+        <RegistrationChart months={registrationMonths} />
       </section>
-      <section className="admin-panel admin-data-coverage">
-        <div className="admin-panel-heading"><div><span className="admin-panel-kicker">DATA COVERAGE</span><h2>What this dashboard can report</h2><p>Metrics appear here when the admin service returns them.</p></div></div>
-        <div className="admin-coverage-grid">
-          <div><span className="coverage-icon available"><UsersRound size={17} /></span><strong>Registrations</strong><small>Available from returned user records.</small><span className="coverage-status available">Available</span></div>
-          <div><span className="coverage-icon"><Activity size={17} /></span><strong>Active users</strong><small>Requires an activity data source.</small><span className="coverage-status">When connected</span></div>
-          <div><span className="coverage-icon"><Eye size={17} /></span><strong>Page views</strong><small>Requires web analytics integration.</small><span className="coverage-status">When connected</span></div>
-        </div>
+      <section className="admin-analytics-detail-grid">
+        <article className="admin-panel admin-analytics-detail-panel">
+          <div className="admin-panel-heading"><div><span className="admin-panel-kicker">SUPPORT INBOX</span><h2>Feedback status</h2><p>{data.feedback.total} submissions in the selected period.</p></div><MessageSquareText size={17} /></div>
+          <div className="admin-analytics-status-list">
+            <div><span className="analytics-status-dot new" /><span>New</span><strong>{formatNumber(data.feedback.new)}</strong></div>
+            <div><span className="analytics-status-dot in-review" /><span>In review</span><strong>{formatNumber(data.feedback.in_review)}</strong></div>
+            <div><span className="analytics-status-dot resolved" /><span>Resolved</span><strong>{formatNumber(data.feedback.resolved)}</strong></div>
+          </div>
+        </article>
+        <article className="admin-panel admin-analytics-detail-panel">
+          <div className="admin-panel-heading"><div><span className="admin-panel-kicker">FAMILY ACTIVITY</span><h2>Shared finances</h2><p>Totals for groups and shared entries.</p></div><UsersRound size={17} /></div>
+          <div className="admin-analytics-status-list">
+            <div><span className="analytics-status-dot family" /><span>Family groups</span><strong>{formatNumber(data.families.total)}</strong></div>
+            <div><span className="analytics-status-dot family" /><span>Groups created in period</span><strong>{formatNumber(data.families.new)}</strong></div>
+            <div><span className="analytics-status-dot income" /><span>Income entries in period</span><strong>{formatNumber(data.transactions.income_count)}</strong></div>
+            <div><span className="analytics-status-dot expense" /><span>Expense entries in period</span><strong>{formatNumber(data.transactions.expense_count)}</strong></div>
+          </div>
+        </article>
       </section>
+      <p className="admin-analytics-footnote"><ShieldCheck size={13} /> Financial amounts are intentionally not combined: family accounts may use different currencies.</p>
+      </>}
     </div>
   );
 }
@@ -719,6 +1014,31 @@ function FeedbackSection({ items, loading, error, filter, setFilter, onRefresh, 
     ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
     return matchesFilter && matchesSearch;
   });
+
+  function exportVisibleFeedback() {
+    if (!visibleItems.length) return;
+    const rows = [
+      ['Submitted at', 'Email', 'User ID', 'Category', 'Status', 'Message', 'Feedback ID'],
+      ...visibleItems.map((item) => [
+        item.created_at || '',
+        item.user_email || '',
+        item.user_id || '',
+        categoryLabels[item.category] || item.category || 'General',
+        statusLabels[item.status] || item.status || '',
+        item.message || '',
+        item.id || '',
+      ]),
+    ];
+    const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}`;
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ExpenseNest_feedback_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
 
   return (
     <div className="admin-page-content">
@@ -763,6 +1083,10 @@ function FeedbackSection({ items, loading, error, filter, setFilter, onRefresh, 
             <input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search email or message" aria-label="Search feedback by email, category, or message" />
             {searchTerm && <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear feedback search"><X size={14} /></button>}
           </label>
+          <span className="admin-count-chip admin-feedback-shown-count">{visibleItems.length} <small>shown</small></span>
+          <button type="button" className="admin-export-button admin-feedback-export" onClick={exportVisibleFeedback} disabled={!visibleItems.length} title="Export feedback matching the current search and status filter">
+            <Download size={14} /> Export CSV
+          </button>
           <button type="button" className="admin-feedback-refresh" onClick={onRefresh} disabled={loading} aria-label="Refresh feedback">
             <RefreshCw size={15} className={loading ? 'is-spinning' : ''} />
           </button>
@@ -825,37 +1149,42 @@ function FeedbackSection({ items, loading, error, filter, setFilter, onRefresh, 
 
 function ActivitySection({ items, loading, error, onRefresh }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
   const statusLabels = { new: 'New', in_review: 'In review', resolved: 'Resolved' };
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const visibleItems = items.filter((item) => {
     const details = item.details && typeof item.details === 'object' ? item.details : {};
-    const matchesStatus = statusFilter === 'all' || details.to === statusFilter;
+    const matchesType = typeFilter === 'all'
+      || (typeFilter === 'users' && item.target_type === 'user')
+      || (typeFilter === 'feedback' && item.target_type === 'feedback');
     const matchesSearch = !normalizedSearch || [
       item.actor_email,
       item.actor_id,
       details.user_email,
+      details.user_display_id,
       details.category,
+      details.requested_action,
       item.target_id,
       details.from,
       details.to,
     ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
-    return matchesStatus && matchesSearch;
+    return matchesType && matchesSearch;
   });
 
   function exportVisibleActivity() {
     if (!visibleItems.length) return;
     const rows = [
-      ['Changed at', 'Admin email', 'Feedback email', 'Category', 'Previous status', 'New status', 'Feedback ID'],
+      ['Changed at', 'Admin email', 'Action', 'Target', 'Result', 'Details', 'Record ID'],
       ...visibleItems.map((item) => {
         const details = item.details && typeof item.details === 'object' ? item.details : {};
+        const isAccountAction = item.target_type === 'user';
         return [
           item.created_at || '',
           item.actor_email || item.actor_id || '',
-          details.user_email || '',
-          details.category || '',
-          statusLabels[details.from] || details.from || '',
-          statusLabels[details.to] || details.to || '',
+          isAccountAction ? (details.requested_action || item.action) : 'Feedback status changed',
+          isAccountAction ? details.user_display_id || item.target_id || '' : details.user_email || details.category || '',
+          isAccountAction ? details.result || 'processing' : `${statusLabels[details.from] || details.from || ''} → ${statusLabels[details.to] || details.to || ''}`,
+          isAccountAction ? details.reason || '' : details.category || '',
           item.target_id || '',
         ];
       }),
@@ -878,7 +1207,7 @@ function ActivitySection({ items, loading, error, onRefresh }) {
           <div>
             <span className="admin-panel-kicker">ADMIN AUDIT TRAIL</span>
             <h2>Recent activity</h2>
-            <p>Feedback status changes made by administrators, newest first.</p>
+            <p>Account access and feedback changes made by administrators, newest first.</p>
           </div>
           <button type="button" className="admin-feedback-refresh" onClick={onRefresh} disabled={loading} aria-label="Refresh activity log">
             <RefreshCw size={15} className={loading ? 'is-spinning' : ''} />
@@ -893,7 +1222,7 @@ function ActivitySection({ items, loading, error, onRefresh }) {
           <div className="admin-empty-state admin-feedback-empty">
             <span className="admin-empty-icon"><History size={22} /></span>
             <h3>No admin activity yet</h3>
-            <p>When an administrator changes a feedback status, the change and time will appear here.</p>
+            <p>Account access and feedback changes will appear here when an administrator makes them.</p>
           </div>
         ) : items.length === 0 ? (
           <div className="admin-empty-state admin-feedback-empty">
@@ -906,16 +1235,15 @@ function ActivitySection({ items, loading, error, onRefresh }) {
             <div className="admin-activity-toolbar">
               <label className="admin-activity-search">
                 <Search size={15} aria-hidden="true" />
-                <input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search admin, email, or feedback ID" aria-label="Search activity log" />
+                <input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search admin, user ID, email, or record ID" aria-label="Search activity log" />
                 {searchTerm && <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear activity search"><X size={14} /></button>}
               </label>
               <label className="admin-activity-filter">
                 <Filter size={14} aria-hidden="true" />
-                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter activity by new status">
-                  <option value="all">All statuses</option>
-                  <option value="new">Changed to New</option>
-                  <option value="in_review">Changed to In review</option>
-                  <option value="resolved">Changed to Resolved</option>
+                <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} aria-label="Filter activity type">
+                  <option value="all">All activity</option>
+                  <option value="users">Account access</option>
+                  <option value="feedback">Feedback updates</option>
                 </select>
               </label>
               <span className="admin-count-chip">{visibleItems.length} <small>shown</small></span>
@@ -935,19 +1263,30 @@ function ActivitySection({ items, loading, error, onRefresh }) {
                   const details = item.details && typeof item.details === 'object' ? item.details : {};
                   const fromStatus = statusLabels[details.from] || details.from || 'Unknown';
                   const toStatus = statusLabels[details.to] || details.to || 'Unknown';
-                  const target = details.user_email || details.category || `Feedback #${String(item.target_id || '').slice(0, 8)}`;
+                  const isAccountAction = item.target_type === 'user';
+                  const actionLabel = details.requested_action === 'suspend' ? 'Sign-in blocked'
+                    : details.requested_action === 'reactivate' ? 'Sign-in restored'
+                      : 'Account access updated';
+                  const actionFailed = details.result === 'failed';
+                  const target = isAccountAction
+                    ? `User ${details.user_display_id || `#${String(item.target_id || '').slice(0, 8)}`}`
+                    : details.user_email || details.category || `Feedback #${String(item.target_id || '').slice(0, 8)}`;
 
                   return (
                     <article className="admin-activity-row" key={item.id}>
-                      <span className="admin-activity-icon"><MessageSquareText size={17} /></span>
+                      <span className={`admin-activity-icon${isAccountAction ? ' account' : ''}`}>
+                        {isAccountAction ? <ShieldCheck size={17} /> : <MessageSquareText size={17} />}
+                      </span>
                       <div className="admin-activity-copy">
                         <div className="admin-activity-title-row">
-                          <strong>Feedback status changed</strong>
-                          <span className="admin-activity-transition">
-                            <span className={`status-${details.from || 'unknown'}`}>{fromStatus}</span>
-                            <ArrowRight size={13} />
-                            <span className={`status-${details.to || 'unknown'}`}>{toStatus}</span>
-                          </span>
+                          <strong>{isAccountAction ? `${actionFailed ? 'Failed: ' : ''}${actionLabel}` : 'Feedback status changed'}</strong>
+                          {isAccountAction ? <span className={`admin-activity-result ${details.result || 'processing'}`}>{details.result || 'processing'}</span> : (
+                            <span className="admin-activity-transition">
+                              <span className={`status-${details.from || 'unknown'}`}>{fromStatus}</span>
+                              <ArrowRight size={13} />
+                              <span className={`status-${details.to || 'unknown'}`}>{toStatus}</span>
+                            </span>
+                          )}
                         </div>
                         <p>{target}</p>
                         <small><ShieldCheck size={12} /> {item.actor_email || `Admin ${String(item.actor_id || '').slice(0, 8) || 'account'}`} <span>·</span> <Clock3 size={12} /> {formatDateTime(item.created_at)}</small>
@@ -1020,17 +1359,18 @@ function UserTable({ users, onViewUser, emptyTitle, emptyMessage }) {
           {users.map((user, index) => {
             const email = user.email || 'Email not available';
             const id = user.id || user.user_id || email || index;
+            const displayId = user.display_id || user.id || user.user_id || 'User ID not available';
             const status = user.status || 'Registered';
             return (
               <tr key={id}>
                 <td>
                   <div className="admin-user-cell">
                     <span className="admin-user-avatar">{(user.email || 'U').charAt(0).toUpperCase()}</span>
-                    <span><strong>{email}</strong><small>{user.id || user.user_id || 'User ID not available'}</small></span>
+                    <span><strong>{email}</strong><small>{displayId}</small></span>
                   </div>
                 </td>
                 <td>{formatDate(user.created_at, { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-                <td><span className="admin-user-status"><span />{status}</span></td>
+                <td><span className={`admin-user-status${status === 'Suspended' ? ' suspended' : ''}`}><span />{status}</span></td>
                 <td><button type="button" className="admin-view-user" onClick={() => onViewUser?.(user)}><Eye size={15} /> View</button></td>
               </tr>
             );
@@ -1041,10 +1381,77 @@ function UserTable({ users, onViewUser, emptyTitle, emptyMessage }) {
   );
 }
 
-function UserDetailsModal({ user, onClose, onCopy }) {
+function UserDetailsModal({ user, onClose, onCopy, onAccountAction, adminUserId }) {
   const email = user.email || '';
-  const id = user.id || user.user_id || '';
+  const id = user.display_id || user.id || user.user_id || '';
+  const userId = user.id || user.user_id;
   const initial = (email || 'U').charAt(0).toUpperCase();
+  const suspended = isUserSuspended(user);
+  const isOwnAccount = userId === adminUserId;
+  const [health, setHealth] = useState(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [healthError, setHealthError] = useState('');
+  const [pendingAction, setPendingAction] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadUserHealth() {
+      const userId = user.id || user.user_id;
+      if (!userId) {
+        setHealthError('The internal account reference is not available.');
+        setHealthLoading(false);
+        return;
+      }
+
+      setHealthLoading(true);
+      setHealthError('');
+      try {
+        const { data, error } = await supabase.rpc('get_admin_user_health', { _user_id: userId });
+        if (!active) return;
+
+        if (error) {
+          const missingRpc = error.code === 'PGRST202' || error.code === '42883';
+          setHealthError(missingRpc
+            ? 'Account health is not set up yet. Run supabase/admin_user_health.sql in Supabase SQL Editor.'
+            : error.message || 'Could not load account health.');
+        } else {
+          setHealth(Array.isArray(data) ? data[0] || null : data || null);
+          if (!data || (Array.isArray(data) && data.length === 0)) {
+            setHealthError('No account health information was found for this user.');
+          }
+        }
+      } catch (requestError) {
+        if (active) setHealthError(requestError.message || 'Could not load account health.');
+      } finally {
+        if (active) setHealthLoading(false);
+      }
+    }
+
+    loadUserHealth();
+    return () => { active = false; };
+  }, [user.id, user.user_id]);
+
+  const healthStats = [
+    { label: 'Family groups', value: health?.family_group_count, icon: UsersRound },
+    { label: 'Transactions added', value: health?.transaction_count, icon: Activity },
+    { label: 'Feedback sent', value: health?.feedback_count, icon: MessageSquareText },
+  ];
+
+  async function confirmAccountAction() {
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await onAccountAction(user, pendingAction);
+      setPendingAction('');
+    } catch (requestError) {
+      setActionError(requestError.message || 'The account access change could not be applied.');
+    } finally {
+      setActionLoading(false);
+    }
+  }
 
   return (
     <div className="admin-modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -1060,6 +1467,54 @@ function UserDetailsModal({ user, onClose, onCopy }) {
           <div><span>Registration date</span><strong>{formatDateTime(user.created_at)}</strong></div>
           <div><span>Account status</span><strong>{user.status || 'Registered'}</strong></div>
         </div>
+        <section className="admin-user-health" aria-label="Account health">
+          <div className="admin-user-health-heading"><div><span className="admin-panel-kicker">ACCOUNT HEALTH</span><h3>Usage overview</h3></div><Clock3 size={16} /></div>
+          {healthLoading ? (
+            <div className="admin-user-health-state"><LoaderCircle size={16} className="is-spinning" /> Loading account activity…</div>
+          ) : healthError ? (
+            <div className="admin-user-health-state warning" role="status">{healthError}</div>
+          ) : (
+            <>
+              <div className="admin-user-health-stats">
+                {healthStats.map(({ label, value, icon: Icon }) => (
+                  <div className="admin-user-health-stat" key={label}><span><Icon size={14} /></span><strong>{formatNumber(value ?? 0)}</strong><small>{label}</small></div>
+                ))}
+              </div>
+              <div className="admin-user-health-activity">
+                <span>Last sign-in</span><strong>{formatDateTime(health?.last_sign_in_at)}</strong>
+                <span>Last transaction added</span><strong>{formatDateTime(health?.last_transaction_at)}</strong>
+                <span>Last feedback sent</span><strong>{formatDateTime(health?.last_feedback_at)}</strong>
+              </div>
+              <p className="admin-user-health-note">Counts and timestamps only. Transaction details remain private.</p>
+            </>
+          )}
+        </section>
+        <section className="admin-user-access" aria-label="Sign-in access">
+          <div className="admin-user-access-heading">
+            <div><span className="admin-panel-kicker">SIGN-IN ACCESS</span><h3>{suspended ? 'Sign-in blocked' : 'Sign-in allowed'}</h3></div>
+            <ShieldCheck size={17} />
+          </div>
+          <p>Blocking sign-in prevents new logins. A session that is already open can remain active until its access token expires.</p>
+          {isOwnAccount ? (
+            <div className="admin-user-access-note">You cannot change sign-in access for your own admin account.</div>
+          ) : pendingAction ? (
+            <div className="admin-user-action-prompt" role="group" aria-label="Confirm account access change">
+              <strong>{pendingAction === 'suspend' ? `Block future sign-ins for ${id}?` : `Restore sign-in for ${id}?`}</strong>
+              {actionError && <span className="admin-user-action-error" role="alert">{actionError}</span>}
+              <div>
+                <button type="button" className="admin-user-action-cancel" onClick={() => { setPendingAction(''); setActionError(''); }} disabled={actionLoading}>Cancel</button>
+                <button type="button" className={`admin-user-action-confirm${pendingAction === 'suspend' ? ' danger' : ''}`} onClick={confirmAccountAction} disabled={actionLoading}>
+                  {actionLoading ? <LoaderCircle size={14} className="is-spinning" /> : <ShieldCheck size={14} />}
+                  {actionLoading ? 'Saving…' : pendingAction === 'suspend' ? 'Confirm block' : 'Confirm restore'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className={`admin-user-access-button${suspended ? ' restore' : ''}`} onClick={() => setPendingAction(suspended ? 'reactivate' : 'suspend')}>
+              <ShieldCheck size={14} />{suspended ? 'Restore sign-in' : 'Block future sign-ins'}
+            </button>
+          )}
+        </section>
         <button type="button" className="admin-primary-button admin-modal-done" onClick={onClose}>Done</button>
       </section>
     </div>
