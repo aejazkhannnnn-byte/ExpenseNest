@@ -1,6 +1,7 @@
 import FamilySharing from './FamilySharing';
 import UserActivityPanel from './components/UserActivityPanel';
 import UserFeedbackCenter from './components/UserFeedbackCenter';
+import BrandAsset from './components/BrandAsset.jsx';
 import Footer from './components/Footer.jsx';
 import { recordUserActivity } from './activityLog';
 import { getFeedbackUnreadCount } from './feedbackConversations';
@@ -1573,7 +1574,7 @@ export default function App({ user }) {
     <header className="header">
       <div className="header-content">
         <a className="brand" href="#top" aria-label="ExpenseNest home">
-          <span className="brand-mark"><WalletCards size={19} strokeWidth={2.1} aria-hidden="true" /></span>
+          <span className="brand-mark"><BrandAsset /></span>
           <span>ExpenseNest</span>
         </a>
         <div className="header-actions">

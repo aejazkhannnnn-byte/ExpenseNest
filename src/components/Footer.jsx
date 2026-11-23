@@ -1,5 +1,6 @@
 
-import { ShieldCheck, Wallet } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
+import BrandAsset from './BrandAsset.jsx';
 import './Footer.css';
 
 export default function Footer() {
@@ -8,9 +9,7 @@ export default function Footer() {
       <div className="website-footer-inner">
 
         <div className="footer-brand">
-          <div className="footer-logo">
-            <Wallet size={22} />
-          </div>
+          <div className="footer-logo"><BrandAsset /></div>
           <span>ExpenseNest</span>
         </div>
 

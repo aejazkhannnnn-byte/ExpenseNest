@@ -6,6 +6,7 @@ import { Analytics } from '@vercel/analytics/react';
 import AuthenticatedApp from './AuthenticatedApp.jsx';
 import AdminPortal from './admin/AdminPortal.jsx';
 import InfoPages from './InfoPages.jsx';
+import './design-tokens.css';
 import './style.css';
 
 function RootApp() {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from './supabase';
+import BrandAsset from './components/BrandAsset.jsx';
 
 export default function Auth({ onAuthSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -109,8 +110,11 @@ export default function Auth({ onAuthSuccess }) {
 
       <div className="auth-card">
         <div className="auth-brand">
-          <div className="auth-logo">₹</div>
-          <span>ExpenseNest</span>
+          <BrandAsset
+            variant="lockup"
+            className="auth-brand-lockup"
+            alt="ExpenseNest — Smart money. Better future."
+          />
         </div>
 
         <div className="auth-heading">
@@ -394,24 +398,14 @@ export default function Auth({ onAuthSuccess }) {
           display: flex;
           justify-content: center;
           align-items: center;
-          gap: 12px;
           margin-bottom: 30px;
-          color: white;
-          font-size: 23px;
-          font-weight: 700;
-          letter-spacing: -.5px;
         }
 
-        .auth-logo {
-          width: 46px;
-          height: 46px;
-          display: grid;
-          place-items: center;
+        .auth-brand-lockup {
+          width: min(100%, 290px);
+          height: auto;
           border-radius: 14px;
-          color: white;
-          font-size: 25px;
-          background: linear-gradient(135deg,#2563eb,#06b6d4);
-          box-shadow: 0 8px 25px rgba(37,99,235,.28);
+          box-shadow: 0 12px 30px rgba(0,0,0,.24);
         }
 
         .auth-heading {
@@ -652,6 +646,10 @@ export default function Auth({ onAuthSuccess }) {
         @media(max-width: 520px) {
           .auth-page {
             padding: 16px;
+          }
+
+          .auth-brand-lockup {
+            width: min(100%, 250px);
           }
 
           .auth-card {

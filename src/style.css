@@ -1564,3 +1564,150 @@ html[data-theme='dark'] .user-activity-row-icon.family { background: #16363a; co
   .user-activity-row-icon { width: 30px; height: 30px; }
   .user-activity-row time { align-items: flex-end; flex-direction: column; gap: 2px; font-size: 8px; }
 }
+
+/* Product-wide visual refinement */
+html { background: var(--app-bg); color: var(--app-text); }
+body { background: radial-gradient(ellipse at 80% 0%, #e9edff 0, transparent 33rem), var(--app-bg); color: var(--app-text); font-size: 15px; letter-spacing: .005em; }
+.header-content, .section-nav-inner, .container { max-width: 1320px; }
+.container { padding-top: 40px; animation: app-content-enter .42s cubic-bezier(.2, .72, .25, 1) both; }
+.header, .section-nav { backdrop-filter: blur(18px) saturate(145%); }
+.brand { font-size: 21px; letter-spacing: -.025em; }
+.brand-mark { border-radius: 12px; height: 38px; width: 38px; }
+.header-note { font-size: 13px; }
+.header-settings, .theme-toggle { min-height: 42px; padding-inline: 13px; border-radius: var(--radius-control); font-size: 13px; }
+.section-nav-inner { gap: 15px; padding-block: 9px; }
+.section-nav-current-icon { height: 36px; width: 36px; }
+.section-nav-current-copy small { font-size: 9px; }
+.section-nav-current-copy strong { font-size: 12px; }
+.section-nav a { gap: 7px; padding: 9px 11px; font-size: 11px; }
+.section-nav-unread { font-size: 9px; }
+.eyebrow { font-size: 11px; }
+.welcome { min-height: 208px; padding: 34px 38px; border-radius: 23px; box-shadow: 0 20px 44px rgb(35 52 112 / 16%); }
+.welcome-copy > p:last-child { font-size: 15px; line-height: 1.65; }
+.month-picker span { font-size: 10px; }
+.month-picker input { font-size: 15px; }
+.summary { gap: 18px; }
+.summary-card { min-height: 138px; padding: 22px; border-radius: var(--radius-panel); box-shadow: var(--ui-shadow); }
+.summary-card:hover { box-shadow: var(--ui-shadow-hover); }
+.summary-card p { font-size: 13px; }
+.summary-card h2 { font-size: clamp(20px, 2.2vw, 25px); }
+.summary-card small { font-size: 12px; }
+.accounts-heading h2 { font-size: 21px; }
+.accounts-heading > div:first-child > p:last-child { font-size: 12px; }
+.accounts-total > span { font-size: 11px; }
+.accounts-total > strong { font-size: 20px; }
+.account-card, .account-create-card { border-radius: var(--radius-card); padding: 16px; }
+.account-card-heading strong, .account-create-heading strong { font-size: 13px; }
+.account-card-heading small, .account-create-heading small { font-size: 11px; }
+.account-balance > span, .account-month-spend > span { font-size: 11px; }
+.account-balance > strong { font-size: 21px; }
+.panel { padding: 26px; border-color: var(--ui-border); border-radius: var(--radius-panel); box-shadow: var(--ui-shadow); }
+.header { background: var(--app-topbar); border-color: var(--app-border); }
+.section-nav { background: var(--app-nav-bg); border-color: var(--app-border); }
+.summary-card:not(.balance), .panel { background: var(--app-surface); border-color: var(--app-border); }
+.account-card, .account-create-card, .goal-card, .settings-card { background: var(--app-surface-soft); border-color: var(--app-border); }
+.panel h2 { font-size: 23px; letter-spacing: -.03em; }
+.primary-button { min-height: 46px; font-size: 14px; }
+.cancel-button { min-height: 40px; font-size: 13px; }
+.success-message { font-size: 13px; }
+.search-box { min-height: 42px; border-radius: var(--radius-control); }
+.search-box input { font-size: 13px; }
+.filters button { font-size: 12px; padding: 8px 11px; }
+.transaction-item { min-height: 70px; padding-block: 15px; }
+.transaction-details strong { font-size: 14px; }
+.transaction-details small { font-size: 12px; }
+.settings-card { border-radius: var(--radius-card); padding: 19px; }
+.settings-card-copy h3 { font-size: 15px; }
+.settings-card-copy p, .settings-currency-note { font-size: 12px; line-height: 1.6; }
+.settings-theme-options button, .settings-privacy-toggle { font-size: 12px; }
+.settings-currency-field { font-size: 11px; }
+.calendar-day-number { font-size: 11px; }
+.calendar-day-amount { font-size: 9px; }
+.calendar-day-details-heading small, .calendar-day-metrics span { font-size: 9px; }
+.calendar-day-details-heading strong, .calendar-day-metrics strong { font-size: 12px; }
+.calendar-day-transactions li > span strong,
+.calendar-day-transactions li > strong,
+.calendar-view-all { font-size: 11px; }
+.calendar-day-transactions li small { font-size: 10px; }
+.user-activity-title h2 { font-size: 22px; }
+.user-activity-title > div > p:last-child { font-size: 13px; }
+.user-activity-actions button, .user-activity-search input, .user-activity-select select { font-size: 12px; }
+.user-activity-row-copy strong { font-size: 13px; }
+.user-activity-row-copy small, .user-activity-row time, .user-activity-footnote { font-size: 11px; }
+.user-activity-empty strong { font-size: 13px; }
+.user-activity-empty small { font-size: 11px; }
+
+:is(button, a, input, select, textarea) { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline-color: var(--app-accent); }
+.header-settings, .theme-toggle { border-color: var(--app-border); background: var(--app-surface-muted); color: var(--app-muted); }
+.header-settings:hover, .theme-toggle:hover { background: var(--app-accent-soft); color: var(--app-accent-strong); }
+:is(button, .panel, .summary-card, .budget-banner, .settings-card, .goal-card, .account-card, .account-create-card, .transaction-item) {
+  transition-timing-function: cubic-bezier(.2, .72, .25, 1);
+}
+:is(button, .primary-button, .goal-create-toggle, .goal-save-button):active:not(:disabled) { transform: scale(.985); }
+:is(.panel, .summary-card, .settings-card, .goal-card, .account-card, .account-create-card) { transition: border-color .2s ease, box-shadow .24s ease, background-color .24s ease, transform .24s ease; }
+:is(.settings-card, .goal-card, .account-card, .account-create-card):hover { border-color: #d6deed; box-shadow: 0 12px 28px rgb(32 47 82 / 7%); }
+
+@keyframes app-content-enter {
+  from { opacity: 0; transform: translateY(9px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+html[data-theme='dark'] .panel { box-shadow: var(--ui-shadow); }
+html[data-theme='dark'] .summary-card { box-shadow: var(--ui-shadow); }
+html[data-theme='dark'] .summary-card:hover { box-shadow: var(--ui-shadow-hover); }
+html[data-theme='dark'] :is(.settings-card, .goal-card, .account-card, .account-create-card):hover { border-color: #3a4c67; box-shadow: 0 12px 28px rgb(0 0 0 / 24%); }
+
+html[data-theme='dark'] body { background: radial-gradient(ellipse at 76% -5%, rgb(29 79 97 / 30%), transparent 36rem), var(--app-bg); color: var(--app-text); }
+html[data-theme='dark'] .header { border-color: var(--app-border); background: rgb(13 21 37 / 90%); }
+html[data-theme='dark'] .section-nav { border-color: var(--app-border); background: var(--app-nav-bg); }
+html[data-theme='dark'] .header-settings, html[data-theme='dark'] .theme-toggle { border-color: var(--app-border); background: var(--app-surface-muted); color: var(--app-muted); }
+html[data-theme='dark'] .header-settings:hover, html[data-theme='dark'] .theme-toggle:hover { background: var(--app-accent-soft); color: var(--app-accent-strong); }
+html[data-theme='dark'] .panel,
+html[data-theme='dark'] .summary-card:not(.balance),
+html[data-theme='dark'] .account-card,
+html[data-theme='dark'] .account-create-card,
+html[data-theme='dark'] .settings-card,
+html[data-theme='dark'] .goal-card { border-color: var(--app-border); background: var(--app-surface); }
+html[data-theme='dark'] .panel { border-radius: var(--radius-panel); }
+
+@media (max-width: 760px) {
+  .container { padding-top: 24px; }
+  .welcome { padding: 26px 24px; }
+  .summary-card { padding: 17px; }
+  .panel { padding: 20px; }
+  .section-nav a { font-size: 12px; }
+}
+
+@media (max-width: 480px) {
+  .container { padding: 18px 14px 54px; }
+  .header-content { padding: 12px 15px; }
+  .brand { font-size: 18px; }
+  .brand-mark { width: 35px; height: 35px; }
+  .header-actions { gap: 8px; }
+  .header-note { font-size: 11px; }
+  .header-settings, .theme-toggle { min-height: 39px; padding-inline: 10px; font-size: 12px; }
+  .section-nav-inner { padding: 7px 12px; }
+  .section-nav a { padding: 9px 10px; }
+  .welcome { min-height: 185px; padding: 23px 20px; }
+  .welcome h1 { font-size: clamp(28px, 8vw, 36px); }
+  .welcome-copy > p:last-child { font-size: 14px; }
+  .summary { gap: 9px; }
+  .summary-card { min-height: 110px; gap: 10px; padding: 13px 11px; }
+  .summary-card p { font-size: 11px; }
+  .summary-card h2 { font-size: clamp(16px, 5vw, 20px); }
+  .summary-card small { font-size: 10px; }
+  .panel { padding: 17px; border-radius: 17px; }
+  .panel h2 { font-size: 20px; }
+  .calendar-day-number { font-size: 10px; }
+  .calendar-day-amount { font-size: 8px; }
+  .calendar-summary .calendar-stat-copy small { font-size: 8px; }
+  .calendar-summary .calendar-stat-copy strong { font-size: 10px; }
+}
+
+/* Brand artwork */
+.brand-asset { display: block; flex: 0 0 auto; max-width: 100%; }
+.brand-asset-mark { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.brand-asset-lockup { height: auto; object-fit: contain; }
+.brand-mark { overflow: hidden; padding: 1px; border: 1px solid rgb(67 218 183 / 24%); background: #061329; box-shadow: 0 7px 18px rgb(1 14 35 / 22%); }
+.brand-mark .brand-asset-mark { width: 100%; height: 100%; }

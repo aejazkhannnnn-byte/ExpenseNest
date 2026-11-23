@@ -1,0 +1,76 @@
+/* Shared visual language for the user and admin panels. */
+:root {
+  color-scheme: light;
+  --app-bg: #f4f6fb;
+  --app-sidebar: #ffffff;
+  --app-topbar: rgb(255 255 255 / 90%);
+  --app-nav-bg: rgb(248 250 255 / 92%);
+  --app-surface: #ffffff;
+  --app-surface-raised: #ffffff;
+  --app-surface-soft: #fafbfe;
+  --app-surface-muted: #f1f4f9;
+  --app-text: #1b2540;
+  --app-muted: #65738a;
+  --app-subtle: #8793a6;
+  --app-border: #e4e9f2;
+  --app-accent: #5969d3;
+  --app-accent-strong: #4658c1;
+  --app-accent-soft: #edf0ff;
+  --app-accent-contrast: #ffffff;
+  --app-positive: #238562;
+  --app-positive-soft: #e8f7f1;
+  --app-negative: #d95f56;
+  --app-negative-soft: #fff0ee;
+  --app-warning: #a8752b;
+  --app-warning-soft: #fff7e9;
+  --app-info: #4268b4;
+  --app-info-soft: #e9f2ff;
+  --app-focus-ring: rgb(89 105 211 / 30%);
+  --app-card-shadow: 0 12px 30px rgb(32 47 82 / 5%);
+  --app-raised-shadow: 0 18px 38px rgb(32 47 82 / 10%);
+  --radius-control: 10px;
+  --radius-card: 16px;
+  --radius-panel: 20px;
+  --radius-pill: 999px;
+  --ui-accent: var(--app-accent);
+  --ui-accent-soft: var(--app-accent-soft);
+  --ui-border: var(--app-border);
+  --ui-shadow: var(--app-card-shadow);
+  --ui-shadow-hover: var(--app-raised-shadow);
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --app-bg: #0b1120;
+  --app-sidebar: #0d1525;
+  --app-topbar: rgb(13 21 37 / 90%);
+  --app-nav-bg: rgb(13 21 37 / 88%);
+  --app-surface: #121b2c;
+  --app-surface-raised: #152238;
+  --app-surface-soft: #101a2a;
+  --app-surface-muted: #19263b;
+  --app-text: #e8edf7;
+  --app-muted: #aab8cc;
+  --app-subtle: #8292a9;
+  --app-border: #26364e;
+  --app-accent: #8d99ff;
+  --app-accent-strong: #aab3ff;
+  --app-accent-soft: #202a49;
+  --app-accent-contrast: #10172a;
+  --app-positive: #6bd7b0;
+  --app-positive-soft: #15382f;
+  --app-negative: #ff9285;
+  --app-negative-soft: #432725;
+  --app-warning: #e5b77b;
+  --app-warning-soft: #392d1f;
+  --app-info: #84bee8;
+  --app-info-soft: #1d3041;
+  --app-focus-ring: rgb(141 153 255 / 38%);
+  --app-card-shadow: 0 12px 30px rgb(0 0 0 / 18%);
+  --app-raised-shadow: 0 18px 38px rgb(0 0 0 / 27%);
+  --ui-accent: var(--app-accent);
+  --ui-accent-soft: var(--app-accent-soft);
+  --ui-border: var(--app-border);
+  --ui-shadow: var(--app-card-shadow);
+  --ui-shadow-hover: var(--app-raised-shadow);
+}

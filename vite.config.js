@@ -8,27 +8,27 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico'],
+      includeAssets: ['brand/expensenest-mark.png', 'brand/expensenest-lockup.png'],
       manifest: {
         name: 'ExpenseNest - Expense Tracker',
         short_name: 'ExpenseNest',
         description: 'Manage your daily expenses and income with ExpenseNest.',
-        theme_color: '#0f172a',
-        background_color: '#ffffff',
+        theme_color: '#061329',
+        background_color: '#061329',
         display: 'standalone',
         start_url: '/',
         scope: '/',
         icons: [
           {
-            src: '/pwa-192.svg',
+            src: '/brand/expensenest-mark-192.png',
             sizes: '192x192',
-            type: 'image/svg+xml',
+            type: 'image/png',
             purpose: 'any'
           },
           {
-            src: '/pwa-512.svg',
+            src: '/brand/expensenest-mark-512.png',
             sizes: '512x512',
-            type: 'image/svg+xml',
+            type: 'image/png',
             purpose: 'any'
           }
         ]

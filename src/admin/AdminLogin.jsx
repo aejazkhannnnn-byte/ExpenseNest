@@ -12,6 +12,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { supabase } from '../supabase';
+import BrandAsset from '../components/BrandAsset.jsx';
 import AdminThemeControl from './AdminThemeControl';
 import './AdminLogin.css';
 
@@ -63,7 +64,7 @@ export default function AdminLogin({ onAdminSuccess, theme, onThemeChange }) {
       <div className="admin-login-shell">
         <section className="admin-login-visual">
           <a className="admin-login-brand" href="/" aria-label="ExpenseNest home">
-            <span className="admin-login-brand-mark">₹</span>
+            <span className="admin-login-brand-mark"><BrandAsset /></span>
             <span>ExpenseNest</span>
           </a>
 

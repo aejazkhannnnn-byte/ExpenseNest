@@ -4,6 +4,7 @@ import { CircleAlert, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
 import { supabase } from './supabase';
 import Auth from './Auth';
 import App from './App';
+import BrandAsset from './components/BrandAsset.jsx';
 import { SHARED_PREFERENCE_STORAGE_KEYS, SHARED_PREFERENCES_STORAGE_KEY } from './sharedPreferences';
 import { recordUserActivity } from './activityLog';
 
@@ -445,6 +446,7 @@ export default function AuthenticatedApp() {
   if (loading) {
     return (
       <div className="en-loading">
+        <span className="en-loading-mark"><BrandAsset /></span>
         <div className="en-loader"></div>
         <h2>ExpenseNest</h2>
         <p>Preparing your financial dashboard...</p>
@@ -459,6 +461,23 @@ export default function AuthenticatedApp() {
             background: #080f20;
             color: white;
             font-family: var(--font-ui);
+          }
+          .en-loading-mark {
+            width: 54px;
+            height: 54px;
+            margin-bottom: 17px;
+            overflow: hidden;
+            padding: 1px;
+            border: 1px solid rgba(67,218,183,.28);
+            border-radius: 16px;
+            background: #061329;
+            box-shadow: 0 10px 26px rgba(0,0,0,.28);
+          }
+          .en-loading-mark .brand-asset-mark {
+            width: 100%;
+            height: 100%;
+            border-radius: inherit;
+            object-fit: cover;
           }
           .en-loader {
             width: 45px;
@@ -617,7 +636,7 @@ export default function AuthenticatedApp() {
     return (
       <div className="en-welcome">
         <div className="en-welcome-card">
-          <div className="en-logo">₹</div>
+          <div className="en-logo"><BrandAsset /></div>
 
           <div className="en-brand">ExpenseNest</div>
 
@@ -699,12 +718,23 @@ export default function AuthenticatedApp() {
             margin: 0 auto 14px;
             display: grid;
             place-items: center;
+            overflow: hidden;
+            padding: 1px;
+            box-sizing: border-box;
+            border: 1px solid rgba(67,218,183,.28);
             border-radius: 20px;
             color: white;
             font-size: 34px;
             font-weight: 700;
-            background: linear-gradient(135deg,#2563eb,#06b6d4);
-            box-shadow: 0 10px 30px rgba(37,99,235,.3);
+            background: #061329;
+            box-shadow: 0 10px 30px rgba(0,0,0,.28);
+          }
+
+          .en-logo .brand-asset-mark {
+            width: 100%;
+            height: 100%;
+            border-radius: inherit;
+            object-fit: cover;
           }
 
           .en-brand {

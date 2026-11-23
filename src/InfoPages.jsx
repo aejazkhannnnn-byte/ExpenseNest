@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { supabase } from './supabase';
 import UserFeedbackCenter from './components/UserFeedbackCenter';
+import BrandAsset from './components/BrandAsset.jsx';
 
 import './InfoPages.css';
 
@@ -26,9 +27,7 @@ function Header() {
   return (
     <header className="info-header">
       <a href="/" className="info-brand">
-        <span className="info-brand-icon">
-          <Wallet size={23} />
-        </span>
+        <span className="info-brand-icon"><BrandAsset /></span>
         ExpenseNest
       </a>
 
@@ -362,7 +361,7 @@ export default function InfoPages() {
 
       <footer className="info-footer">
         <div className="info-footer-brand">
-          <Wallet size={19} />
+          <BrandAsset />
           ExpenseNest
         </div>
         <p>Your Money. Your Control.</p>

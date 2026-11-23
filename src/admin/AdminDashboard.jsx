@@ -34,6 +34,7 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '../supabase';
+import BrandAsset from '../components/BrandAsset.jsx';
 import { CURRENCIES } from '../currency';
 import { DATE_FORMAT_OPTIONS, formatAppDate, formatAppDateTime } from '../dateFormatting';
 import { loadMoreAdminActivity } from '../activityLog';
@@ -848,7 +849,7 @@ export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChan
     <div className="admin-layout">
       <aside className="admin-sidebar" aria-label="Admin navigation">
         <a className="admin-brand" href="/admin" aria-label="ExpenseNest admin home">
-          <span className="admin-brand-mark"><span>₹</span></span>
+          <span className="admin-brand-mark"><BrandAsset /></span>
           <span className="admin-brand-copy"><strong>ExpenseNest</strong><small>ADMIN CONSOLE</small></span>
         </a>
 
