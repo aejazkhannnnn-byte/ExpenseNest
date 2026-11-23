@@ -20,7 +20,7 @@ alter table public.admin_activity_logs
   drop constraint if exists admin_activity_logs_action_allowed_check;
 alter table public.admin_activity_logs
   add constraint admin_activity_logs_action_allowed_check
-  check (action in ('feedback_status_changed', 'user_account_action'));
+  check (action in ('feedback_status_changed', 'feedback_response_sent', 'feedback_response_updated', 'user_account_action', 'admin_signed_in', 'admin_signed_out', 'admin_setting_changed'));
 
 alter table public.admin_activity_logs
   drop constraint if exists admin_activity_logs_target_type_check;

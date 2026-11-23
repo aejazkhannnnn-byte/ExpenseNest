@@ -1,6 +1,19 @@
 import FamilySharing from './FamilySharing';
+import UserActivityPanel from './components/UserActivityPanel';
+import UserFeedbackCenter from './components/UserFeedbackCenter';
 import Footer from './components/Footer.jsx';
-import { CURRENCIES, CURRENCY_STORAGE_KEY, DEFAULT_CURRENCY, formatCurrency, getPreferredCurrency, isSupportedCurrency } from './currency.js';
+import { recordUserActivity } from './activityLog';
+import { getFeedbackUnreadCount } from './feedbackConversations';
+import { CURRENCIES, CURRENCY_STORAGE_KEY, DEFAULT_CURRENCY, formatCurrency, formatCurrencyForExport, getPreferredCurrency, isSupportedCurrency } from './currency.js';
+import {
+  DEFAULT_SHARED_PREFERENCES,
+  getSharedPreference,
+  SHARED_PREFERENCE_STORAGE_KEYS,
+  SHARED_PREFERENCES_STORAGE_KEY,
+  writeSharedPreference,
+  writeSharedPreferences,
+} from './sharedPreferences.js';
+import { DATE_FORMAT_OPTIONS, formatAppDate } from './dateFormatting.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   UsersRound,
@@ -14,6 +27,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  History,
+  MessageSquareText,
   Pencil,
   PieChart,
   PiggyBank,
@@ -71,6 +86,8 @@ const sectionNavigation = [
   { id: 'trends', label: 'Trends', icon: TrendingUp },
   { id: 'daily-calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'transactions', label: 'Transactions', icon: ShoppingBag },
+  { id: 'activity', label: 'Activity', icon: History },
+  { id: 'feedback', label: 'Feedback', icon: MessageSquareText },
   { id: 'backup', label: 'Backup', icon: ShieldCheck },
 ];
 const categoryIcons = { Food: Utensils, Travel: Plane, Shopping: ShoppingBag, Bills: Zap, Other: Sparkles };
@@ -92,9 +109,7 @@ function transactionDateKey(value) {
 }
 
 function displayDate(value) {
-  return new Date(`${transactionDateKey(value)}T00:00:00`).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'short', year: 'numeric',
-  });
+  return formatAppDate(transactionDateKey(value));
 }
 
 function currentMonthKey() { return localDateKey().slice(0, 7); }
@@ -106,7 +121,14 @@ function shiftMonth(month, offset) {
 }
 
 function getSavedTheme() {
-  return localStorage.getItem('expenseNestTheme') === 'light' ? 'light' : 'dark';
+  return getSharedPreference('theme') || (localStorage.getItem('expenseNestTheme') === 'light' ? 'light' : 'dark');
+}
+
+function shouldReduceMotion() {
+  const preference = getSharedPreference('motionPreference');
+  return preference === 'reduced'
+    || (preference !== 'reduced' && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
 
 function getNotificationPermission() {
@@ -448,6 +470,21 @@ function parseFullBackup(source) {
   if (data.currency !== undefined && !isSupportedCurrency(data.currency)) {
     throw new Error('The backup contains an unsupported currency preference.');
   }
+  if (data.dateFormat !== undefined && !DATE_FORMAT_OPTIONS.some(({ value }) => value === data.dateFormat)) {
+    throw new Error('The backup contains an unsupported date format preference.');
+  }
+  if (data.density !== undefined && !['comfortable', 'compact'].includes(data.density)) {
+    throw new Error('The backup contains an unsupported layout density preference.');
+  }
+  if (data.privacyMode !== undefined && typeof data.privacyMode !== 'boolean') {
+    throw new Error('The backup contains an unsupported privacy preference.');
+  }
+  if (data.weekStart !== undefined && !['sunday', 'monday', 'saturday'].includes(data.weekStart)) {
+    throw new Error('The backup contains an unsupported first day of week.');
+  }
+  if (data.motionPreference !== undefined && !['system', 'reduced'].includes(data.motionPreference)) {
+    throw new Error('The backup contains an unsupported motion preference.');
+  }
   return backup;
 }
 
@@ -463,6 +500,7 @@ export default function App({ user }) {
   const [filter, setFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [activeSection, setActiveSection] = useState('overview');
+  const [feedbackUnreadCount, setFeedbackUnreadCount] = useState(0);
   const sectionNavRef = useRef(null);
   const sectionProgressRef = useRef(null);
   const [customCategories, setCustomCategories] = useState(getSavedCustomCategories);
@@ -490,13 +528,52 @@ export default function App({ user }) {
   const [categoryBudgetDrafts, setCategoryBudgetDrafts] = useState({});
   const [categoryBudgetNotice, setCategoryBudgetNotice] = useState('');
   const [theme, setTheme] = useState(getSavedTheme);
-  const [currency, setCurrency] = useState(getPreferredCurrency);
+  const [currency, setCurrency] = useState(() => getSharedPreference('currency') || getPreferredCurrency());
+  const [dateFormat, setDateFormat] = useState(() => getSharedPreference('dateFormat') || DEFAULT_SHARED_PREFERENCES.dateFormat);
+  const [density, setDensity] = useState(() => getSharedPreference('density') || DEFAULT_SHARED_PREFERENCES.density);
+  const [privacyMode, setPrivacyMode] = useState(() => getSharedPreference('privacyMode') ?? DEFAULT_SHARED_PREFERENCES.privacyMode);
+  const [weekStart, setWeekStart] = useState(() => getSharedPreference('weekStart') || DEFAULT_SHARED_PREFERENCES.weekStart);
+  const [motionPreference, setMotionPreference] = useState(() => getSharedPreference('motionPreference') || DEFAULT_SHARED_PREFERENCES.motionPreference);
   const [notificationPermission, setNotificationPermission] = useState(getNotificationPermission);
   const [notificationStatus, setNotificationStatus] = useState('');
   const [importPreview, setImportPreview] = useState(null);
   const [importStatus, setImportStatus] = useState('');
   const [backupPreview, setBackupPreview] = useState(null);
   const [backupStatus, setBackupStatus] = useState('');
+  function trackActivity(eventType) {
+    if (!user?.id) return;
+    void recordUserActivity(eventType).catch(() => {
+      // Activity history is optional and must never block the financial action itself.
+    });
+  }
+
+  useEffect(() => {
+    if (!user?.id) {
+      setFeedbackUnreadCount(0);
+      return undefined;
+    }
+    let active = true;
+    const refreshUnread = () => {
+      void getFeedbackUnreadCount()
+        .then((count) => { if (active) setFeedbackUnreadCount(count); })
+        .catch(() => {});
+    };
+    refreshUnread();
+    window.addEventListener('focus', refreshUnread);
+    const timer = window.setInterval(refreshUnread, 45000);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refreshUnread);
+      window.clearInterval(timer);
+    };
+  }, [user?.id]);
+
+  function setUserTheme(nextTheme) {
+    const value = typeof nextTheme === 'function' ? nextTheme(theme) : nextTheme;
+    if (value === theme) return;
+    setTheme(value);
+    trackActivity('settings_updated');
+  }
 
   const categories = useMemo(() => [...defaultCategories, ...customCategories], [customCategories]);
   const activeNavItem = sectionNavigation.find((item) => item.id === activeSection) ?? sectionNavigation[0];
@@ -763,15 +840,71 @@ export default function App({ user }) {
     const left = navScroller.scrollLeft + linkBounds.left - scrollerBounds.left - (navScroller.clientWidth - linkBounds.width) / 2;
     navScroller.scrollTo({
       left: Math.max(0, left),
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      behavior: shouldReduceMotion() ? 'auto' : 'smooth',
     });
   }, [activeSection]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0b1120' : '#ffffff');
-    localStorage.setItem('expenseNestTheme', theme);
+    writeSharedPreference('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    writeSharedPreference('currency', currency);
+  }, [currency]);
+
+  useEffect(() => {
+    writeSharedPreference('dateFormat', dateFormat);
+  }, [dateFormat]);
+
+  useEffect(() => {
+    document.documentElement.dataset.density = density;
+    writeSharedPreference('density', density);
+  }, [density]);
+
+  useEffect(() => {
+    writeSharedPreference('privacyMode', privacyMode);
+  }, [privacyMode]);
+
+  useEffect(() => {
+    writeSharedPreference('weekStart', weekStart);
+  }, [weekStart]);
+
+  useEffect(() => {
+    if (motionPreference === 'system') delete document.documentElement.dataset.motion;
+    else document.documentElement.dataset.motion = motionPreference;
+    writeSharedPreference('motionPreference', motionPreference);
+  }, [motionPreference]);
+
+  useEffect(() => {
+    function syncSharedPreferences(event) {
+      const changedKey = event.type === 'storage' ? event.key : null;
+      if (event.type === 'storage' && changedKey && ![...Object.values(SHARED_PREFERENCE_STORAGE_KEYS), SHARED_PREFERENCES_STORAGE_KEY].includes(changedKey)) return;
+
+      const nextTheme = getSharedPreference('theme');
+      const nextCurrency = getSharedPreference('currency');
+      const nextDateFormat = getSharedPreference('dateFormat');
+      const nextDensity = getSharedPreference('density');
+      const nextPrivacyMode = getSharedPreference('privacyMode');
+      const nextWeekStart = getSharedPreference('weekStart');
+      const nextMotionPreference = getSharedPreference('motionPreference');
+      if (nextTheme) setTheme(nextTheme);
+      if (nextCurrency && isSupportedCurrency(nextCurrency)) setCurrency(nextCurrency);
+      if (nextDateFormat) setDateFormat(nextDateFormat);
+      if (nextDensity) setDensity(nextDensity);
+      if (nextPrivacyMode !== null) setPrivacyMode(nextPrivacyMode);
+      if (nextWeekStart) setWeekStart(nextWeekStart);
+      if (nextMotionPreference) setMotionPreference(nextMotionPreference);
+    }
+
+    window.addEventListener('storage', syncSharedPreferences);
+    window.addEventListener('expensenest:preferences-changed', syncSharedPreferences);
+    return () => {
+      window.removeEventListener('storage', syncSharedPreferences);
+      window.removeEventListener('expensenest:preferences-changed', syncSharedPreferences);
+    };
+  }, []);
 
   useEffect(() => {
     if (notificationPermission !== 'granted' || dueReminders.length === 0) return;
@@ -799,7 +932,7 @@ export default function App({ user }) {
       );
       notification.onclick = () => {
         window.focus();
-        document.getElementById('recurring')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('recurring')?.scrollIntoView({ behavior: shouldReduceMotion() ? 'auto' : 'smooth', block: 'start' });
         notification.close();
       };
       const nextNotified = [
@@ -816,8 +949,8 @@ export default function App({ user }) {
   function handleCurrencyChange(event) {
     const nextCurrency = event.target.value;
     if (!isSupportedCurrency(nextCurrency)) return;
-    localStorage.setItem(CURRENCY_KEY, nextCurrency);
     setCurrency(nextCurrency);
+    trackActivity('settings_updated');
   }
 
   async function enablePaymentNotifications() {
@@ -872,6 +1005,7 @@ export default function App({ user }) {
     }
     const account = { id: `account-${crypto.randomUUID()}`, name, openingBalance };
     saveAccounts([...accounts, account]);
+    trackActivity('account_added');
     setAccountOpeningDrafts((current) => ({ ...current, [account.id]: String(openingBalance) }));
     setAccountForm({ name: '', openingBalance: '' });
     setAccountStatus(`${name} account added.`);
@@ -886,6 +1020,7 @@ export default function App({ user }) {
     }
     const nextAccounts = accounts.map((account) => account.id === accountId ? { ...account, openingBalance } : account);
     saveAccounts(nextAccounts);
+    trackActivity('account_updated');
     setAccountStatus(`${accountName(accountId)} starting balance saved.`);
   }
 
@@ -898,6 +1033,7 @@ export default function App({ user }) {
     }
     const nextAccounts = accounts.filter((account) => account.id !== accountId);
     saveAccounts(nextAccounts);
+    trackActivity('account_deleted');
     setAccountOpeningDrafts((current) => {
       const nextDrafts = { ...current };
       delete nextDrafts[accountId];
@@ -924,6 +1060,7 @@ export default function App({ user }) {
       }
       return { ...item, accountId: legacyAssignmentDraft };
     }));
+    trackActivity('legacy_entries_assigned');
     const legacyRecurringRuleIds = new Set(unassignedTransactions.map((item) => item.recurringRuleId).filter(Boolean));
     if (legacyRecurringRuleIds.size) {
       saveRecurringRules(recurringRules.map((rule) => (
@@ -999,7 +1136,9 @@ export default function App({ user }) {
       ? transactions.map((item) => item.id === editingId ? transaction : item)
       : [...transactions, transaction];
     save(nextTransactions);
+    trackActivity(editingId ? 'transaction_updated' : 'transaction_added');
     if (recurringRule) saveRecurringRules([...recurringRules, recurringRule]);
+    if (recurringRule) trackActivity('recurring_schedule_created');
     setForm({ title: '', amount: '', type: 'expense', category: 'Food', accountId: 'cash', fromAccountId: 'cash', toAccountId: 'bank', date: defaultDateForMonth(selectedMonth) });
     setRepeatMonthly(false);
     setEditingId(null);
@@ -1009,6 +1148,7 @@ export default function App({ user }) {
 
   function removeTransaction(id) {
     save(transactions.filter((item) => item.id !== id));
+    trackActivity('transaction_deleted');
   }
 
   function editTransaction(transaction) {
@@ -1024,7 +1164,7 @@ export default function App({ user }) {
     });
     setRepeatMonthly(false);
     setEditingId(transaction.id);
-    document.querySelector('.add-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    document.querySelector('.add-panel')?.scrollIntoView({ behavior: shouldReduceMotion() ? 'auto' : 'smooth', block: 'center' });
   }
 
   function cancelEdit() {
@@ -1051,14 +1191,17 @@ export default function App({ user }) {
       date: recurringDate(rule, selectedMonth),
       recurringRuleId: rule.id,
     }]);
+    trackActivity('recurring_payment_recorded');
   }
 
   function toggleRecurringRule(ruleId) {
     saveRecurringRules(recurringRules.map((rule) => rule.id === ruleId ? { ...rule, active: !rule.active } : rule));
+    trackActivity('recurring_schedule_updated');
   }
 
   function deleteRecurringRule(ruleId) {
     saveRecurringRules(recurringRules.filter((rule) => rule.id !== ruleId));
+    trackActivity('recurring_schedule_deleted');
   }
 
   function persistGoals(nextGoals) {
@@ -1079,6 +1222,7 @@ export default function App({ user }) {
       deadline: goalForm.deadline,
       createdAt: localDateKey(),
     }]);
+    trackActivity('savings_goal_created');
     setGoalForm({ title: '', targetAmount: '', savedAmount: '', deadline: '' });
     setGoalFormOpen(false);
   }
@@ -1089,12 +1233,14 @@ export default function App({ user }) {
     const remaining = Math.max(0, Number(goal.targetAmount) - Number(goal.savedAmount));
     if (!Number.isFinite(contribution) || contribution <= 0 || contribution > remaining) return;
     persistGoals(goals.map((item) => item.id === goal.id ? { ...item, savedAmount: Number(item.savedAmount) + contribution } : item));
+    trackActivity('savings_goal_contribution');
     setGoalContributionDrafts((current) => ({ ...current, [goal.id]: '' }));
   }
 
   function deleteGoal(goalId) {
     if (!window.confirm('Delete this savings goal? Its saved progress will be removed.')) return;
     persistGoals(goals.filter((goal) => goal.id !== goalId));
+    trackActivity('savings_goal_deleted');
   }
 
   function saveBudget(event) {
@@ -1105,6 +1251,7 @@ export default function App({ user }) {
     setMonthlyBudgets(nextBudgets);
     localStorage.setItem(BUDGETS_KEY, JSON.stringify(nextBudgets));
     localStorage.setItem(BUDGET_KEY, String(nextBudget));
+    trackActivity('monthly_budget_updated');
     setMessage('Monthly budget saved');
     window.setTimeout(() => setMessage(''), 2500);
   }
@@ -1123,6 +1270,7 @@ export default function App({ user }) {
     const nextBudgets = { ...categoryBudgets, [selectedMonth]: nextForMonth };
     setCategoryBudgets(nextBudgets);
     localStorage.setItem(CATEGORY_BUDGETS_KEY, JSON.stringify(nextBudgets));
+    trackActivity('category_limit_updated');
     setCategoryBudgetNotice(`${category} limit ${draft ? 'saved' : 'cleared'}`);
     window.setTimeout(() => setCategoryBudgetNotice(''), 2200);
   }
@@ -1147,6 +1295,7 @@ export default function App({ user }) {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    trackActivity('csv_exported');
   }
 
   function downloadFullBackup() {
@@ -1166,6 +1315,11 @@ export default function App({ user }) {
         goals,
         theme,
         currency,
+        dateFormat,
+        density,
+        privacyMode,
+        weekStart,
+        motionPreference,
       },
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -1177,12 +1331,14 @@ export default function App({ user }) {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    trackActivity('backup_exported');
   }
 
   function printFullBackup() {
     const clearPrintMode = () => document.body.classList.remove('print-full-backup');
     document.body.classList.add('print-full-backup');
     window.addEventListener('afterprint', clearPrintMode, { once: true });
+    trackActivity('backup_exported');
     window.setTimeout(() => window.print(), 50);
   }
 
@@ -1219,6 +1375,15 @@ export default function App({ user }) {
     const nextMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(data.selectedMonth) ? data.selectedMonth : currentMonthKey();
     const nextTheme = data.theme === 'light' ? 'light' : 'dark';
     const nextCurrency = isSupportedCurrency(data.currency) ? data.currency : DEFAULT_CURRENCY;
+    const nextDateFormat = DATE_FORMAT_OPTIONS.some(({ value }) => value === data.dateFormat)
+      ? data.dateFormat
+      : DEFAULT_SHARED_PREFERENCES.dateFormat;
+    const nextDensity = ['comfortable', 'compact'].includes(data.density)
+      ? data.density
+      : DEFAULT_SHARED_PREFERENCES.density;
+    const nextPrivacyMode = typeof data.privacyMode === 'boolean' ? data.privacyMode : DEFAULT_SHARED_PREFERENCES.privacyMode;
+    const nextWeekStart = ['sunday', 'monday', 'saturday'].includes(data.weekStart) ? data.weekStart : DEFAULT_SHARED_PREFERENCES.weekStart;
+    const nextMotionPreference = ['system', 'reduced'].includes(data.motionPreference) ? data.motionPreference : DEFAULT_SHARED_PREFERENCES.motionPreference;
     const nextCustomCategories = Array.isArray(data.categories) ? data.categories : [];
     const nextAccounts = Array.isArray(data.accounts) ? data.accounts : defaultAccounts;
     const storageValues = new Map([
@@ -1232,12 +1397,27 @@ export default function App({ user }) {
       [BUDGET_KEY, data.monthlyBudget ? String(data.monthlyBudget) : null],
       ['expenseNestTheme', nextTheme],
       [CURRENCY_KEY, nextCurrency],
+      [SHARED_PREFERENCE_STORAGE_KEYS.dateFormat, nextDateFormat],
+      [SHARED_PREFERENCE_STORAGE_KEYS.density, nextDensity],
+      [SHARED_PREFERENCE_STORAGE_KEYS.privacyMode, String(nextPrivacyMode)],
+      [SHARED_PREFERENCE_STORAGE_KEYS.weekStart, nextWeekStart],
+      [SHARED_PREFERENCE_STORAGE_KEYS.motionPreference, nextMotionPreference],
+      [SHARED_PREFERENCES_STORAGE_KEY, null],
     ]);
     const previousValues = new Map([...storageValues.keys()].map((key) => [key, localStorage.getItem(key)]));
     try {
       storageValues.forEach((value, key) => {
         if (value === null) localStorage.removeItem(key);
         else localStorage.setItem(key, value);
+      });
+      writeSharedPreferences({
+        theme: nextTheme,
+        currency: nextCurrency,
+        dateFormat: nextDateFormat,
+        density: nextDensity,
+        privacyMode: nextPrivacyMode,
+        weekStart: nextWeekStart,
+        motionPreference: nextMotionPreference,
       });
     } catch {
       let rollbackSucceeded = true;
@@ -1271,10 +1451,16 @@ export default function App({ user }) {
     setRepeatMonthly(false);
     setTheme(nextTheme);
     setCurrency(nextCurrency);
+    setDateFormat(nextDateFormat);
+    setDensity(nextDensity);
+    setPrivacyMode(nextPrivacyMode);
+    setWeekStart(nextWeekStart);
+    setMotionPreference(nextMotionPreference);
     setCategoryBudgetDrafts(data.categoryBudgets[nextMonth] ?? {});
     setGoalContributionDrafts({});
     setBackupPreview(null);
     setBackupStatus('Backup restored. The data in this browser was replaced.');
+    trackActivity('backup_restored');
   }
 
   async function handleCsvFile(event) {
@@ -1319,6 +1505,7 @@ export default function App({ user }) {
     setQuery('');
     setImportStatus(`Imported ${freshTransactions.length} transaction${freshTransactions.length === 1 ? '' : 's'}${importPreview.duplicates ? `; skipped ${importPreview.duplicates} duplicate${importPreview.duplicates === 1 ? '' : 's'}` : ''}${importPreview.invalid ? `; skipped ${importPreview.invalid} invalid row${importPreview.invalid === 1 ? '' : 's'}` : ''}.`);
     setImportPreview(null);
+    trackActivity('csv_imported');
   }
 
   function toggleCategory(category) {
@@ -1346,6 +1533,7 @@ export default function App({ user }) {
     setForm((current) => ({ ...current, category }));
     setNewCategory('');
     setCustomCategoryStatus(`${category} added and ready to use.`);
+    trackActivity('category_created');
   }
 
   function removeCustomCategory(category) {
@@ -1367,6 +1555,7 @@ export default function App({ user }) {
       return nextDrafts;
     });
     setCustomCategoryStatus(`${category} removed.`);
+    trackActivity('category_deleted');
   }
 
   function clearTransactionFilters() {
@@ -1393,7 +1582,7 @@ export default function App({ user }) {
             <Settings2 size={16} aria-hidden="true" />
             <span>Settings</span>
           </a>
-          <button className="theme-toggle" type="button" onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
+          <button className="theme-toggle" type="button" onClick={() => setUserTheme((current) => current === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
             {theme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
             <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
           </button>
@@ -1414,7 +1603,7 @@ export default function App({ user }) {
             aria-current={activeSection === id ? 'location' : undefined}
             onClick={() => setActiveSection(id)}
             key={id}
-          ><SectionIcon size={13} strokeWidth={2.1} aria-hidden="true" /><span>{label}</span></a>)}
+          ><SectionIcon size={13} strokeWidth={2.1} aria-hidden="true" /><span>{label}</span>{id === 'feedback' && feedbackUnreadCount > 0 && <small className="section-nav-unread" aria-label={`${feedbackUnreadCount} unread replies`}>{feedbackUnreadCount > 99 ? '99+' : feedbackUnreadCount}</small>}</a>)}
         </div>
       </div>
       <div className="section-nav-progress" aria-hidden="true"><span ref={sectionProgressRef} /></div>
@@ -1791,6 +1980,7 @@ export default function App({ user }) {
         month={selectedMonth}
         monthLabel={selectedMonthLabel}
         currency={currency}
+        weekStart={weekStart}
         transactions={monthTransactions}
         accountName={accountName}
         dateFrom={dateFrom}
@@ -1851,6 +2041,10 @@ export default function App({ user }) {
         )}
       </section>
 
+      <UserActivityPanel user={user} />
+
+      <UserFeedbackCenter user={user} onUnreadCountChange={setFeedbackUnreadCount} />
+
       <section className="panel backup-panel" id="backup" aria-labelledby="backup-title">
         <div className="backup-heading">
           <div className="backup-icon"><ShieldCheck size={20} aria-hidden="true" /></div>
@@ -1879,7 +2073,7 @@ export default function App({ user }) {
             <span><strong>{backupPreview.goalCount}</strong> savings goals</span>
             <span><strong>{backupPreview.categoryCount}</strong> custom categories</span>
           </div>
-          <p className="backup-warning">Restoring replaces the accounts, transactions, budgets, schedules, goals, theme and currency preference currently saved in this browser.</p>
+          <p className="backup-warning">Restoring replaces the accounts, transactions, budgets, schedules, goals and shared application preferences currently saved in this browser.</p>
           <div className="backup-preview-actions">
             <button className="backup-restore-confirm" type="button" onClick={restoreFullBackup}><Upload size={14} aria-hidden="true" /> Restore this backup</button>
             <button className="csv-cancel" type="button" onClick={() => setBackupPreview(null)}>Keep current data</button>
@@ -1888,7 +2082,7 @@ export default function App({ user }) {
       </section>
 
       <section id="family-sharing" className="panel">
-        <FamilySharing user={user} currency={currency} />
+        <FamilySharing user={user} currency={currency} onActivity={trackActivity} />
       </section>
 
       <section id="settings" className="panel settings-panel" aria-labelledby="settings-title">
@@ -1897,7 +2091,7 @@ export default function App({ user }) {
           <div>
             <p className="eyebrow">YOUR PREFERENCES</p>
             <h2 id="settings-title">Settings</h2>
-            <p>Choose how ExpenseNest looks and displays your amounts.</p>
+            <p>Choose how ExpenseNest looks and displays your information.</p>
           </div>
         </div>
 
@@ -1908,8 +2102,8 @@ export default function App({ user }) {
               <p>Pick the theme that feels comfortable to use.</p>
             </div>
             <div className="settings-theme-options" role="group" aria-label="Appearance theme">
-              <button type="button" className={theme === 'dark' ? 'selected' : ''} onClick={() => setTheme('dark')} aria-pressed={theme === 'dark'}><Moon size={16} aria-hidden="true" /> Dark</button>
-              <button type="button" className={theme === 'light' ? 'selected' : ''} onClick={() => setTheme('light')} aria-pressed={theme === 'light'}><Sun size={16} aria-hidden="true" /> Light</button>
+              <button type="button" className={theme === 'dark' ? 'selected' : ''} onClick={() => setUserTheme('dark')} aria-pressed={theme === 'dark'}><Moon size={16} aria-hidden="true" /> Dark</button>
+              <button type="button" className={theme === 'light' ? 'selected' : ''} onClick={() => setUserTheme('light')} aria-pressed={theme === 'light'}><Sun size={16} aria-hidden="true" /> Light</button>
             </div>
           </section>
 
@@ -1925,6 +2119,78 @@ export default function App({ user }) {
               </select>
             </label>
             <p className="settings-currency-note">This changes the currency label and number format only. It does not convert values using exchange rates.</p>
+          </section>
+
+          <section className="settings-card" aria-labelledby="settings-date-format-title">
+            <div className="settings-card-copy">
+              <h3 id="settings-date-format-title">Date format</h3>
+              <p>Choose how dates appear across transactions, reports and family activity.</p>
+            </div>
+            <label className="settings-currency-field" htmlFor="settings-date-format">
+              <span>Date format</span>
+              <select id="settings-date-format" value={dateFormat} onChange={(event) => { setDateFormat(event.target.value); trackActivity('settings_updated'); }}>
+                {DATE_FORMAT_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+          </section>
+
+          <section className="settings-card" aria-labelledby="settings-density-title">
+            <div className="settings-card-copy">
+              <h3 id="settings-density-title">Layout density</h3>
+              <p>Use more breathing room or fit more information on screen.</p>
+            </div>
+            <label className="settings-currency-field" htmlFor="settings-density">
+              <span>Spacing</span>
+              <select id="settings-density" value={density} onChange={(event) => { setDensity(event.target.value); trackActivity('settings_updated'); }}>
+                <option value="comfortable">Comfortable</option>
+                <option value="compact">Compact</option>
+              </select>
+            </label>
+          </section>
+
+          <section className="settings-card" aria-labelledby="settings-privacy-title">
+            <div className="settings-card-copy">
+              <h3 id="settings-privacy-title">Privacy mode</h3>
+              <p>Hide money amounts while you use ExpenseNest. CSV and backup exports retain full values.</p>
+            </div>
+            <label className="settings-privacy-toggle">
+              <input type="checkbox" checked={privacyMode} onChange={(event) => {
+                const nextPrivacyMode = event.target.checked;
+                writeSharedPreference('privacyMode', nextPrivacyMode);
+                setPrivacyMode(nextPrivacyMode);
+                trackActivity('settings_updated');
+              }} />
+              <span>{privacyMode ? 'Amounts hidden on screen' : 'Amounts visible'}</span>
+            </label>
+          </section>
+
+          <section className="settings-card" aria-labelledby="settings-week-start-title">
+            <div className="settings-card-copy">
+              <h3 id="settings-week-start-title">Calendar week</h3>
+              <p>Set the first day used by the spending calendar.</p>
+            </div>
+            <label className="settings-currency-field" htmlFor="settings-week-start">
+              <span>Week starts on</span>
+              <select id="settings-week-start" value={weekStart} onChange={(event) => { setWeekStart(event.target.value); trackActivity('settings_updated'); }}>
+                <option value="sunday">Sunday</option>
+                <option value="monday">Monday</option>
+                <option value="saturday">Saturday</option>
+              </select>
+            </label>
+          </section>
+
+          <section className="settings-card" aria-labelledby="settings-motion-title">
+            <div className="settings-card-copy">
+              <h3 id="settings-motion-title">Motion and animation</h3>
+              <p>Follow your device accessibility setting or reduce movement throughout the app.</p>
+            </div>
+            <label className="settings-currency-field" htmlFor="settings-motion">
+              <span>Motion preference</span>
+              <select id="settings-motion" value={motionPreference} onChange={(event) => { setMotionPreference(event.target.value); trackActivity('settings_updated'); }}>
+                <option value="system">Follow device setting</option>
+                <option value="reduced">Reduce animations</option>
+              </select>
+            </label>
           </section>
 
           <section className="settings-card" aria-labelledby="settings-notifications-title">
@@ -1972,6 +2238,11 @@ export default function App({ user }) {
       <FullBackupPrintView
         selectedMonth={selectedMonth}
         theme={theme}
+        dateFormat={dateFormat}
+        density={density}
+        privacyMode={privacyMode}
+        weekStart={weekStart}
+        motionPreference={motionPreference}
         categories={categories}
         customCategories={customCategories}
         accounts={accountStats}
@@ -1990,12 +2261,13 @@ export default function App({ user }) {
     <Footer />
   </>;
 }
-function FullBackupPrintView({ selectedMonth, theme, currency, categories, customCategories, accounts, unassignedBalance, unassignedCount, totalAccountBalance, transactions, monthlyBudgets, categoryBudgets, recurringRules, goals }) {
+function FullBackupPrintView({ selectedMonth, theme, dateFormat, density, privacyMode, weekStart, motionPreference, currency, categories, customCategories, accounts, unassignedBalance, unassignedCount, totalAccountBalance, transactions, monthlyBudgets, categoryBudgets, recurringRules, goals }) {
   const monthLabel = new Date(`${selectedMonth}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const sortedTransactions = [...transactions].sort((first, second) => transactionDateKey(first.date).localeCompare(transactionDateKey(second.date)));
   const recurringNames = new Map(recurringRules.map((rule) => [rule.id, rule.title]));
   const accountNames = new Map(accounts.map((account) => [account.id, account.name]));
   const budgetRows = Object.entries(monthlyBudgets).sort(([first], [second]) => first.localeCompare(second));
+  const formatCurrency = (amount, currencyCode = currency, notation) => formatCurrencyForExport(amount, currencyCode, notation);
   const categoryBudgetRows = Object.entries(categoryBudgets).flatMap(([month, limits]) => (
     limits && typeof limits === 'object' && !Array.isArray(limits)
       ? Object.entries(limits).map(([category, amount]) => ({ month, category, amount }))
@@ -2014,6 +2286,11 @@ function FullBackupPrintView({ selectedMonth, theme, currency, categories, custo
         <p><span>Selected month</span><strong>{monthLabel}</strong></p>
         <p><span>Theme</span><strong>{theme === 'light' ? 'Light' : 'Dark'}</strong></p>
         <p><span>Currency</span><strong>{currency}</strong></p>
+        <p><span>Date format</span><strong>{DATE_FORMAT_OPTIONS.find((option) => option.value === dateFormat)?.label || 'Regional'}</strong></p>
+        <p><span>Layout density</span><strong>{density === 'compact' ? 'Compact' : 'Comfortable'}</strong></p>
+        <p><span>On-screen privacy</span><strong>{privacyMode ? 'Amounts hidden' : 'Amounts visible'}</strong></p>
+        <p><span>Calendar week starts</span><strong>{weekStart ? weekStart.charAt(0).toUpperCase() + weekStart.slice(1) : 'Sunday'}</strong></p>
+        <p><span>Motion preference</span><strong>{motionPreference || 'System'}</strong></p>
         <p><span>Categories</span><strong>{categories.length}</strong></p>
         <p><span>Accounts</span><strong>{accounts.length}</strong></p>
         <p><span>Total account balance</span><strong>{formatCurrency(totalAccountBalance)}</strong></p>
@@ -2050,7 +2327,7 @@ function FullBackupPrintView({ selectedMonth, theme, currency, categories, custo
       {transactions.length === 0 ? <p className="pdf-empty">No transactions saved.</p> : <table>
         <thead><tr><th>Date</th><th>Description</th><th>Type</th><th>Category</th><th>Amount</th><th>Account</th><th>Schedule</th></tr></thead>
         <tbody>{sortedTransactions.map((transaction, index) => <tr key={transaction.id ?? `${transaction.date}-${index}`}>
-          <td>{transactionDateKey(transaction.date)}</td><td>{transaction.title}</td><td>{transaction.type}</td><td>{transaction.type === 'transfer' ? 'Transfer' : transaction.category}</td><td>{formatCurrency(Number(transaction.amount))}</td><td>{transaction.type === 'transfer' ? `${accountNames.get(transaction.fromAccountId) ?? 'Unknown'} → ${accountNames.get(transaction.toAccountId) ?? 'Unknown'}` : accountNames.get(transaction.accountId) ?? 'Unassigned'}</td><td>{transaction.recurringRuleId ? recurringNames.get(transaction.recurringRuleId) ?? 'Recurring' : '—'}</td>
+          <td>{displayDate(transaction.date)}</td><td>{transaction.title}</td><td>{transaction.type}</td><td>{transaction.type === 'transfer' ? 'Transfer' : transaction.category}</td><td>{formatCurrency(Number(transaction.amount))}</td><td>{transaction.type === 'transfer' ? `${accountNames.get(transaction.fromAccountId) ?? 'Unknown'} → ${accountNames.get(transaction.toAccountId) ?? 'Unknown'}` : accountNames.get(transaction.accountId) ?? 'Unassigned'}</td><td>{transaction.recurringRuleId ? recurringNames.get(transaction.recurringRuleId) ?? 'Recurring' : '—'}</td>
         </tr>)}</tbody>
       </table>}
     </section>
@@ -2171,10 +2448,13 @@ function MonthlyReport({ monthLabel, previousMonthLabel, totals, previousTotals,
   </section>;
 }
 
-function DailySpendingCalendar({ month, monthLabel, transactions, accountName, currency, dateFrom, dateTo, onChangeMonth, onShowCurrentMonth, onSelectDate, onClearDateRange }) {
+function DailySpendingCalendar({ month, monthLabel, transactions, accountName, currency, weekStart = 'sunday', dateFrom, dateTo, onChangeMonth, onShowCurrentMonth, onSelectDate, onClearDateRange }) {
   const daysInMonth = lastDayOfMonth(month);
   const [year, monthNumber] = month.split('-').map(Number);
-  const firstWeekday = new Date(year, monthNumber - 1, 1).getDay();
+  const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const weekStartIndex = { sunday: 0, monday: 1, saturday: 6 }[weekStart] ?? 0;
+  const firstWeekday = (new Date(year, monthNumber - 1, 1).getDay() - weekStartIndex + 7) % 7;
+  const orderedWeekdays = Array.from({ length: 7 }, (_, index) => weekdayNames[(weekStartIndex + index) % 7]);
   const today = localDateKey();
   const dailyTotals = useMemo(() => {
     const totalsByDate = new Map();
@@ -2232,7 +2512,7 @@ function DailySpendingCalendar({ month, monthLabel, transactions, accountName, c
     </div>
     <div className="calendar-layout">
       <div className="calendar-main">
-        <div className="calendar-weekdays" aria-hidden="true">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}</div>
+        <div className="calendar-weekdays" aria-hidden="true">{orderedWeekdays.map((day) => <span key={day}>{day}</span>)}</div>
         <div className="calendar-grid" role="group" aria-label={`${monthLabel} daily spending calendar`}>
           {cells.map((item, index) => {
             if (!item) return <span className="calendar-empty-cell" aria-hidden="true" key={`empty-${index}`} />;
@@ -2281,7 +2561,7 @@ function DailySpendingCalendar({ month, monthLabel, transactions, accountName, c
               <strong className={transaction.type === 'transfer' ? 'calendar-transfer-total' : transaction.type === 'income' ? 'calendar-income-total' : 'calendar-expense-total'}>{transaction.type === 'transfer' ? '↔ ' : transaction.type === 'income' ? '+' : '−'}{formatCurrency(Number(transaction.amount))}</strong>
             </li>)}
           </ul> : <p className="calendar-no-transactions">No transactions recorded on this day.</p>}
-          {selectedDateTransactions.length > 4 && <button className="calendar-view-all" type="button" onClick={() => document.getElementById('transactions')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })}>View all {selectedDateTransactions.length} transactions <ArrowRight size={13} aria-hidden="true" /></button>}
+          {selectedDateTransactions.length > 4 && <button className="calendar-view-all" type="button" onClick={() => document.getElementById('transactions')?.scrollIntoView({ behavior: shouldReduceMotion() ? 'auto' : 'smooth', block: 'start' })}>View all {selectedDateTransactions.length} transactions <ArrowRight size={13} aria-hidden="true" /></button>}
         </> : <>
           <div className="calendar-day-empty-icon"><CalendarDays size={22} aria-hidden="true" /></div>
           <p className="eyebrow">DAY DETAILS</p>

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { formatCurrency } from './currency.js';
+import { formatAppDate } from './dateFormatting.js';
 
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -28,10 +29,10 @@ function localDateKey(date = new Date()) {
 function displayTransactionDate(value) {
   const [year, month, day] = String(value ?? '').slice(0, 10).split('-').map(Number);
   if (!year || !month || !day) return 'Date not available';
-  return new Date(year, month - 1, day).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatAppDate(new Date(year, month - 1, day));
 }
 
-export default function FamilySharing({ user, currency }) {
+export default function FamilySharing({ user, currency, onActivity }) {
   const [familyName, setFamilyName] = useState('');
   const [families, setFamilies] = useState([]);
   const [selectedFamily, setSelectedFamily] = useState(null);
@@ -226,6 +227,7 @@ export default function FamilySharing({ user, currency }) {
       setFamilyName('');
       setSelectedFamily(data);
       setMessage('Family created successfully!');
+      onActivity?.('family_created');
       await loadFamilies();
     } catch (err) {
       console.error('Create family:', err);
@@ -267,6 +269,7 @@ export default function FamilySharing({ user, currency }) {
       setCreatedInviteCode(data);
       setInviteEmail('');
       setMessage('Invitation created successfully.');
+      onActivity?.('family_invitation_sent');
     } catch (err) {
       console.error('Create invitation:', err);
       setError(err.message || 'Unable to create invitation.');
@@ -299,6 +302,7 @@ export default function FamilySharing({ user, currency }) {
 
       setInviteCode('');
       setMessage('You have successfully joined the family!');
+      onActivity?.('family_invitation_accepted');
 
       const list = await loadFamilies();
       const joinedFamily = list.find((f) => f.id === data);
@@ -353,6 +357,7 @@ export default function FamilySharing({ user, currency }) {
         setMembers((current) => current.filter((item) => item.user_id !== member.user_id));
         setMessage(`${memberLabel} was removed. Their old invite codes are disabled, and previous transactions remain in the family history.`);
       }
+      onActivity?.('family_member_removed');
     } catch (err) {
       console.error('Remove family member:', err);
       setError(err.message || 'Unable to remove this family member.');
@@ -412,6 +417,7 @@ export default function FamilySharing({ user, currency }) {
       setTransactionDate(localDateKey());
 
       setMessage('Transaction added successfully!');
+      onActivity?.('family_transaction_added');
       await loadTransactions(selectedFamily.id);
     } catch (err) {
       console.error('Add transaction:', err);
@@ -487,6 +493,7 @@ export default function FamilySharing({ user, currency }) {
 
       cancelEditing();
       setMessage('Transaction updated successfully!');
+      onActivity?.('family_transaction_updated');
       await loadTransactions(selectedFamily.id);
     } catch (err) {
       console.error('Update transaction:', err);
@@ -520,6 +527,7 @@ export default function FamilySharing({ user, currency }) {
       }
 
       setMessage('Transaction deleted successfully!');
+      onActivity?.('family_transaction_deleted');
       await loadTransactions(selectedFamily.id);
     } catch (err) {
       console.error('Delete transaction:', err);

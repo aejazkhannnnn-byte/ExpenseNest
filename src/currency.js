@@ -22,7 +22,7 @@ export function getPreferredCurrency() {
   return isSupportedCurrency(savedCurrency) ? savedCurrency : DEFAULT_CURRENCY;
 }
 
-export function formatCurrency(amount, currency = getPreferredCurrency(), notation) {
+function formatCurrencyValue(amount, currency, notation) {
   const config = currencyByCode.get(currency) ?? currencyByCode.get(DEFAULT_CURRENCY);
   return new Intl.NumberFormat(config.locale, {
     style: 'currency',
@@ -30,4 +30,17 @@ export function formatCurrency(amount, currency = getPreferredCurrency(), notati
     maximumFractionDigits: notation === 'compact' ? 1 : 2,
     ...(notation ? { notation } : {}),
   }).format(Number(amount) || 0);
+}
+
+export function formatCurrency(amount, currency = getPreferredCurrency(), notation) {
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('expenseNestPrivacyMode') === 'true') return '••••';
+  } catch {
+    // A storage restriction should not prevent the amount from being formatted.
+  }
+  return formatCurrencyValue(amount, currency, notation);
+}
+
+export function formatCurrencyForExport(amount, currency = getPreferredCurrency(), notation) {
+  return formatCurrencyValue(amount, currency, notation);
 }

@@ -4,6 +4,8 @@ import { CircleAlert, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
 import { supabase } from './supabase';
 import Auth from './Auth';
 import App from './App';
+import { SHARED_PREFERENCE_STORAGE_KEYS, SHARED_PREFERENCES_STORAGE_KEY } from './sharedPreferences';
+import { recordUserActivity } from './activityLog';
 
 import {
   getLocalExpenseData,
@@ -23,10 +25,12 @@ export default function AuthenticatedApp() {
   const [error, setError] = useState('');
 
   const timerRef = useRef(null);
+  const sharedPreferenceSyncTimerRef = useRef(null);
   const userIdRef = useRef(null);
   const readyRef = useRef(false);
   const accountAccessStateRef = useRef('checking');
   const activityLoggedForRef = useRef(null);
+  const activitySessionLoggedRef = useRef(null);
   const activityAttemptRef = useRef({ key: null, at: 0 });
   const activityTrackingDisabledRef = useRef(false);
   const savingRef = useRef(false);
@@ -101,6 +105,7 @@ export default function AuthenticatedApp() {
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!mounted) return;
 
+      if (!newSession) activitySessionLoggedRef.current = null;
       setSession(newSession);
       setError('');
     });
@@ -142,15 +147,24 @@ export default function AuthenticatedApp() {
         }
 
         updateAccountAccessState('allowed');
+        if (activitySessionLoggedRef.current !== session.user.id) {
+          activitySessionLoggedRef.current = session.user.id;
+          void recordUserActivity('user_signed_in').catch(() => {});
+        }
         void recordAppActivity(session.user.id);
         const cloudData = await loadCloudData(session.user.id);
 
         if (!active) return;
 
         if (cloudData !== null) {
-          applyExpenseData(cloudData);
+          const syncNewerLocalPreferences = applyExpenseData(cloudData);
           readyRef.current = true;
           setReady(true);
+          if (syncNewerLocalPreferences) {
+            void saveCloudData(session.user.id, getLocalExpenseData()).catch(() => {
+              // The local preference remains applied; a later app change can retry cloud sync.
+            });
+          }
         } else {
           setReady(false);
         }
@@ -259,6 +273,27 @@ export default function AuthenticatedApp() {
     return operation;
   }, []);
 
+  // If an open admin tab changes shared preferences, persist those changes with this account's data.
+  useEffect(() => {
+    const sharedPreferenceKeys = new Set([
+      ...Object.values(SHARED_PREFERENCE_STORAGE_KEYS),
+      SHARED_PREFERENCES_STORAGE_KEY,
+    ]);
+    const syncExternalPreferenceChange = (event) => {
+      if (!sharedPreferenceKeys.has(event.key) || !readyRef.current) return;
+      clearTimeout(sharedPreferenceSyncTimerRef.current);
+      sharedPreferenceSyncTimerRef.current = window.setTimeout(() => {
+        void syncNow();
+      }, 180);
+    };
+
+    window.addEventListener('storage', syncExternalPreferenceChange);
+    return () => {
+      clearTimeout(sharedPreferenceSyncTimerRef.current);
+      window.removeEventListener('storage', syncExternalPreferenceChange);
+    };
+  }, [syncNow]);
+
   // Automatic localStorage sync
   useEffect(() => {
     if (!ready || !session?.user?.id) return;
@@ -354,6 +389,8 @@ export default function AuthenticatedApp() {
         'expenseNestCustomCategories',
         'expenseNestTheme',
         'expenseNestCurrency',
+        ...Object.values(SHARED_PREFERENCE_STORAGE_KEYS).filter((key) => !['expenseNestTheme', 'expenseNestCurrency'].includes(key)),
+        SHARED_PREFERENCES_STORAGE_KEY,
       ];
 
       storageKeys.forEach((key) => {
@@ -386,6 +423,12 @@ export default function AuthenticatedApp() {
 
     if (readyRef.current) {
       await syncNow();
+    }
+
+    try {
+      await recordUserActivity('user_signed_out');
+    } catch {
+      // Session history is optional and must not prevent sign-out.
     }
 
     readyRef.current = false;

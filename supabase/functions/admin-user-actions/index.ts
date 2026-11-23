@@ -52,8 +52,18 @@ Deno.serve(async (request: Request) => {
     const body = await request.json();
     const userId = body?.user_id;
     const action = body?.action;
+    const suspensionDuration = String(body?.suspension_duration ?? 'indefinite');
+    const banDurations: Record<string, string> = {
+      '24h': '24h',
+      '7d': '168h',
+      '30d': '720h',
+      indefinite: '876000h',
+    };
     if (!isUuid(userId) || (action !== 'suspend' && action !== 'reactivate')) {
       return respond(400, { success: false, message: 'Choose a valid account and action.' });
+    }
+    if (action === 'suspend' && !Object.prototype.hasOwnProperty.call(banDurations, suspensionDuration)) {
+      return respond(400, { success: false, message: 'Choose a valid suspension duration.' });
     }
 
     const callerClient = createClient(supabaseUrl, publishableKey, {
@@ -113,6 +123,7 @@ Deno.serve(async (request: Request) => {
           requested_action: action,
           result: 'processing',
           user_display_id: userDisplayId,
+          suspension_duration: action === 'suspend' ? suspensionDuration : null,
         },
       })
       .select('id')
@@ -123,14 +134,14 @@ Deno.serve(async (request: Request) => {
     }
 
     const { data: updateData, error: updateError } = await adminClient.auth.admin.updateUserById(userId, {
-      ban_duration: action === 'suspend' ? '876000h' : 'none',
+      ban_duration: action === 'suspend' ? banDurations[suspensionDuration] : 'none',
     });
 
     if (updateError) {
       console.error('Could not apply account sign-in action.', updateError);
       const { error: auditUpdateError } = await adminClient
         .from('admin_activity_logs')
-        .update({ details: { requested_action: action, result: 'failed', reason: 'auth_update_failed', user_display_id: userDisplayId } })
+        .update({ details: { requested_action: action, result: 'failed', reason: 'auth_update_failed', user_display_id: userDisplayId, suspension_duration: action === 'suspend' ? suspensionDuration : null } })
         .eq('id', auditRecord.id);
       if (auditUpdateError) console.error('Could not finalize failed account action audit record.', auditUpdateError);
       return respond(400, { success: false, message: 'Supabase could not change sign-in access for this account.' });
@@ -138,7 +149,7 @@ Deno.serve(async (request: Request) => {
 
     const { error: auditFinalizeError } = await adminClient
       .from('admin_activity_logs')
-      .update({ details: { requested_action: action, result: 'completed', user_display_id: userDisplayId } })
+      .update({ details: { requested_action: action, result: 'completed', user_display_id: userDisplayId, suspension_duration: action === 'suspend' ? suspensionDuration : null } })
       .eq('id', auditRecord.id);
     if (auditFinalizeError) console.error('Account action completed, but its audit record could not be finalized.', auditFinalizeError);
 
@@ -147,6 +158,7 @@ Deno.serve(async (request: Request) => {
       action,
       status: action === 'suspend' ? 'suspended' : 'registered',
       banned_until: updateData.user?.banned_until || null,
+      suspension_duration: action === 'suspend' ? suspensionDuration : null,
       audit_warning: Boolean(auditFinalizeError),
     });
   } catch (error) {

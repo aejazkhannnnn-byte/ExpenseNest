@@ -12,9 +12,10 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { supabase } from '../supabase';
+import AdminThemeControl from './AdminThemeControl';
 import './AdminLogin.css';
 
-export default function AdminLogin({ onAdminSuccess }) {
+export default function AdminLogin({ onAdminSuccess, theme, onThemeChange }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -55,6 +56,7 @@ export default function AdminLogin({ onAdminSuccess }) {
 
   return (
     <main className="admin-login-page">
+      <AdminThemeControl theme={theme} onChange={onThemeChange} variant="login" />
       <div className="admin-login-glow login-glow-one" />
       <div className="admin-login-glow login-glow-two" />
 

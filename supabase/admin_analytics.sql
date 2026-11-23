@@ -17,6 +17,51 @@ begin
 end;
 $migration$;
 
+-- Keep one privacy-safe app-activity record per signed-in account per local day.
+create table if not exists public.account_activity_days (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  activity_date date not null,
+  recorded_at timestamptz not null default pg_catalog.now(),
+  primary key (user_id, activity_date)
+);
+
+create index if not exists account_activity_days_date_idx
+  on public.account_activity_days (activity_date);
+
+alter table public.account_activity_days enable row level security;
+revoke all on table public.account_activity_days from public, anon, authenticated;
+
+create or replace function public.record_account_activity()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  current_user_id uuid := auth.uid();
+begin
+  if current_user_id is null then
+    raise exception 'Please sign in before recording account activity.' using errcode = '42501';
+  end if;
+
+  if not exists (
+    select 1
+    from auth.users as account
+    where account.id = current_user_id
+      and (account.banned_until is null or account.banned_until <= pg_catalog.now())
+  ) then
+    raise exception 'This account cannot record activity.' using errcode = '42501';
+  end if;
+
+  insert into public.account_activity_days (user_id, activity_date)
+  values (current_user_id, (pg_catalog.now() at time zone 'Asia/Kolkata')::date)
+  on conflict (user_id, activity_date) do nothing;
+end;
+$function$;
+
+revoke all on function public.record_account_activity() from public, anon;
+grant execute on function public.record_account_activity() to authenticated;
+
 create or replace function public.get_admin_analytics(_from_date date, _to_date date)
 returns jsonb
 language plpgsql
@@ -29,6 +74,11 @@ declare
   total_users bigint;
   period_users bigint;
   previous_users bigint;
+  active_users bigint;
+  previous_active_users bigint;
+  returning_users bigint;
+  returning_rate numeric;
+  daily_active_users jsonb;
   period_feedback bigint;
   feedback_new bigint;
   feedback_in_review bigint;
@@ -65,6 +115,56 @@ begin
   from auth.users
   where created_at >= (previous_from::timestamp at time zone 'Asia/Kolkata')
     and created_at < (_from_date::timestamp at time zone 'Asia/Kolkata');
+
+  select count(distinct activity.user_id)
+    into active_users
+  from public.account_activity_days as activity
+  where activity.activity_date between _from_date and _to_date;
+
+  select count(distinct activity.user_id)
+    into previous_active_users
+  from public.account_activity_days as activity
+  where activity.activity_date >= previous_from
+    and activity.activity_date < _from_date;
+
+  select count(distinct activity.user_id)
+    into returning_users
+  from public.account_activity_days as activity
+  join auth.users as account on account.id = activity.user_id
+  where activity.activity_date between _from_date and _to_date
+    and account.created_at < (_from_date::timestamp at time zone 'Asia/Kolkata');
+
+  returning_rate := case
+    when active_users = 0 then 0
+    else round((returning_users::numeric * 100) / active_users, 1)
+  end;
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'date', to_char(daily.activity_date, 'YYYY-MM-DD'),
+        'label', to_char(daily.activity_date, 'Mon FMDD'),
+        'count', daily.active_count
+      ) order by daily.activity_date
+    ),
+    '[]'::jsonb
+  )
+  into daily_active_users
+  from (
+    select calendar.activity_date::date as activity_date,
+           coalesce(active.active_count, 0)::bigint as active_count
+    from generate_series(
+      _from_date::timestamp,
+      _to_date::timestamp,
+      interval '1 day'
+    ) as calendar(activity_date)
+    left join (
+      select activity.activity_date, count(distinct activity.user_id)::bigint as active_count
+      from public.account_activity_days as activity
+      where activity.activity_date between _from_date and _to_date
+      group by activity.activity_date
+    ) as active on active.activity_date = calendar.activity_date::date
+  ) as daily;
 
   select
     count(*),
@@ -116,20 +216,34 @@ begin
 
   return jsonb_build_object(
     'period', jsonb_build_object('from', _from_date, 'to', _to_date, 'days', period_days),
-    'users', jsonb_build_object('total', total_users, 'new', period_users, 'previous_new', previous_users),
+    'users', jsonb_build_object(
+      'total', total_users,
+      'new', period_users,
+      'previous_new', previous_users,
+      'active', active_users,
+      'previous_active', previous_active_users,
+      'returning', returning_users,
+      'returning_rate', returning_rate
+    ),
     'feedback', jsonb_build_object('total', period_feedback, 'new', feedback_new,
                                    'in_review', feedback_in_review, 'resolved', feedback_resolved),
     'families', jsonb_build_object('total', total_families, 'new', period_families),
     'transactions', jsonb_build_object('count', period_transactions,
                                        'income_count', period_income_count,
                                        'expense_count', period_expense_count),
-    'monthly_signups', monthly_signups
+    'monthly_signups', monthly_signups,
+    'daily_active_users', daily_active_users
   );
 end;
 $function$;
 
 revoke all on function public.get_admin_analytics(date, date) from public, anon, authenticated;
 grant execute on function public.get_admin_analytics(date, date) to authenticated;
+
+comment on table public.account_activity_days is
+  'One account-per-day app usage record, without transaction or financial details.';
+comment on function public.record_account_activity() is
+  'Records the current authenticated account as active for the current Asia/Kolkata date.';
 
 commit;
 

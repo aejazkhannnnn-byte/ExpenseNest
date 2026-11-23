@@ -1,5 +1,6 @@
 
 import { supabase } from './supabase';
+import { mergeSharedPreferencesWithCloudData, SHARED_PREFERENCES_STORAGE_KEY } from './sharedPreferences';
 
 const STORAGE_KEYS = {
   transactions: 'expenseNestTransactions',
@@ -12,6 +13,12 @@ const STORAGE_KEYS = {
   customCategories: 'expenseNestCustomCategories',
   theme: 'expenseNestTheme',
   currency: 'expenseNestCurrency',
+  dateFormat: 'expenseNestDateFormat',
+  density: 'expenseNestDensity',
+  privacyMode: 'expenseNestPrivacyMode',
+  weekStart: 'expenseNestWeekStart',
+  motionPreference: 'expenseNestMotionPreference',
+  preferences: SHARED_PREFERENCES_STORAGE_KEY,
 };
 
 export function getLocalExpenseData() {
@@ -25,8 +32,10 @@ export function getLocalExpenseData() {
 }
 
 export function applyExpenseData(data) {
+  const { data: mergedData, localPreferenceIsNewer } = mergeSharedPreferencesWithCloudData(data);
+
   Object.entries(STORAGE_KEYS).forEach(([name, key]) => {
-    const value = data?.[name];
+    const value = mergedData?.[name];
 
     if (value === null || value === undefined) {
       localStorage.removeItem(key);
@@ -34,6 +43,8 @@ export function applyExpenseData(data) {
       localStorage.setItem(key, value);
     }
   });
+
+  return localPreferenceIsNewer;
 }
 
 export async function loadCloudData(userId) {
