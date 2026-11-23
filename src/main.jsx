@@ -2,6 +2,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Analytics } from '@vercel/analytics/react';
+import { installLocalization } from './gujaratiLocalization.js';
 
 import AuthenticatedApp from './AuthenticatedApp.jsx';
 import AdminPortal from './admin/AdminPortal.jsx';
@@ -24,6 +25,8 @@ function RootApp() {
 
   return <AuthenticatedApp />;
 }
+
+installLocalization();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

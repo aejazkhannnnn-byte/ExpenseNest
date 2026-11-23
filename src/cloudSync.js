@@ -12,6 +12,7 @@ const STORAGE_KEYS = {
   goals: 'expenseNestSavingsGoals',
   customCategories: 'expenseNestCustomCategories',
   theme: 'expenseNestTheme',
+  language: 'expenseNestLanguage',
   currency: 'expenseNestCurrency',
   dateFormat: 'expenseNestDateFormat',
   density: 'expenseNestDensity',

@@ -1,13 +1,15 @@
+import { getAppLocale } from './gujaratiLocalization.js';
+
 export const CURRENCY_STORAGE_KEY = 'expenseNestCurrency';
 export const DEFAULT_CURRENCY = 'INR';
 
 export const CURRENCIES = [
   { code: 'INR', name: 'Indian Rupee', locale: 'en-IN' },
-  { code: 'USD', name: 'US Dollar', locale: 'en-US' },
-  { code: 'EUR', name: 'Euro', locale: 'de-DE' },
-  { code: 'GBP', name: 'British Pound', locale: 'en-GB' },
-  { code: 'AED', name: 'UAE Dirham', locale: 'en-AE' },
-  { code: 'PKR', name: 'Pakistani Rupee', locale: 'en-PK' },
+  { code: 'USD', name: 'US Dollar', locale: 'en-IN' },
+  { code: 'EUR', name: 'Euro', locale: 'en-IN' },
+  { code: 'GBP', name: 'British Pound', locale: 'en-IN' },
+  { code: 'AED', name: 'UAE Dirham', locale: 'en-IN' },
+  { code: 'PKR', name: 'Pakistani Rupee', locale: 'en-IN' },
 ];
 
 const currencyByCode = new Map(CURRENCIES.map((currency) => [currency.code, currency]));
@@ -24,7 +26,7 @@ export function getPreferredCurrency() {
 
 function formatCurrencyValue(amount, currency, notation) {
   const config = currencyByCode.get(currency) ?? currencyByCode.get(DEFAULT_CURRENCY);
-  return new Intl.NumberFormat(config.locale, {
+  return new Intl.NumberFormat(getAppLocale(), {
     style: 'currency',
     currency: config.code,
     maximumFractionDigits: notation === 'compact' ? 1 : 2,

@@ -354,7 +354,7 @@ export default function AuthenticatedApp() {
       setReady(true);
       setSyncStatus('All changes saved');
     } catch (err) {
-      setError(err?.message || 'Data import nahi ho saka.');
+      setError(err?.message || 'Could not import the data.');
     } finally {
       setChoiceLoading(false);
     }
@@ -365,7 +365,7 @@ export default function AuthenticatedApp() {
     if (!session?.user?.id) return;
 
     const confirmed = window.confirm(
-      'Start Fresh karne se is browser ka existing ExpenseNest data clear ho jayega. Kya aap sure hain?'
+      'Starting fresh will clear the existing ExpenseNest data in this browser. Continue?'
     );
 
     if (!confirmed) return;
@@ -406,7 +406,7 @@ export default function AuthenticatedApp() {
       setReady(true);
       setSyncStatus('All changes saved');
     } catch (err) {
-      setError(err?.message || 'Fresh account start nahi ho saka.');
+      setError(err?.message || 'Could not start a fresh account.');
     } finally {
       setChoiceLoading(false);
     }
@@ -415,7 +415,7 @@ export default function AuthenticatedApp() {
   // Logout
   const handleLogout = async () => {
     const confirmed = window.confirm(
-      'Kya aap ExpenseNest se logout karna chahte hain?'
+      'Do you want to sign out of ExpenseNest?'
     );
 
     if (!confirmed) return;

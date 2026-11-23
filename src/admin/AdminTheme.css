@@ -115,7 +115,7 @@ html[data-theme='light'] .admin-profile-card { border-top-color: #e3e8f1; }
 html[data-theme='light'] .admin-profile-copy strong { color: #27344d; }
 html[data-theme='light'] .admin-profile-copy small { color: #78869a; }
 html[data-theme='light'] .admin-logout, html[data-theme='light'] .admin-icon-button { color: #718097; }
-html[data-theme='light'] .admin-logout:hover { color: #c24c54; }
+html[data-theme='light'] .admin-logout:hover { border-color: #f0d7d9; background: #fff4f4; color: #c24c54; }
 html[data-theme='light'] .admin-topbar { border-bottom-color: var(--admin-border); background: var(--admin-topbar); box-shadow: 0 4px 18px rgb(35 48 76 / 3%); }
 html[data-theme='light'] .admin-breadcrumb strong { color: #34425c; }
 html[data-theme='light'] .admin-connection-pill { color: #427b69; }
@@ -447,3 +447,121 @@ html[data-motion='reduced'] *::after {
 .admin-theme-options { gap: 5px; padding: 5px; border-radius: 12px; }
 .admin-theme-options button { min-height: 38px; padding-inline: 12px; font-size: 12px; }
 .admin-theme-options button.selected { box-shadow: 0 3px 8px rgb(0 0 0 / 14%); }
+
+/* Refined black-and-gold admin palette; both appearance modes retain the same identity. */
+html[data-theme='dark'] .admin-layout {
+  --admin-bg: #090806;
+  --admin-sidebar: #0d0b08;
+  --admin-topbar: rgb(13 11 8 / 94%);
+  --admin-surface: #13110e;
+  --admin-surface-soft: #1b1812;
+  --admin-surface-muted: #252015;
+  --admin-border: rgb(214 179 108 / 17%);
+  --admin-text: #f5efdf;
+  --admin-muted: #b9ad91;
+  --admin-faint: #8c8065;
+  --admin-violet: #d7b66f;
+  --admin-mint: #c9aa67;
+  --admin-blue: #d3b874;
+  --admin-amber: #e4c47b;
+}
+
+html[data-theme='light'] .admin-layout {
+  --admin-bg: #f5f1e8;
+  --admin-sidebar: #fffdf8;
+  --admin-topbar: rgb(255 253 248 / 95%);
+  --admin-surface: #fffdf8;
+  --admin-surface-soft: #f8f3e9;
+  --admin-surface-muted: #f1e8d5;
+  --admin-border: rgb(145 111 50 / 17%);
+  --admin-text: #2b261d;
+  --admin-muted: #746950;
+  --admin-faint: #9a8d73;
+  --admin-violet: #9e7938;
+  --admin-mint: #9d824c;
+  --admin-blue: #967941;
+  --admin-amber: #a47e35;
+}
+
+html[data-theme='dark'] .admin-sidebar { border-right-color: var(--admin-border); background: linear-gradient(180deg, #0d0b08, #090806); }
+html[data-theme='light'] .admin-sidebar { border-right-color: var(--admin-border); background: linear-gradient(180deg, #fffdf8, #f7f2e9); }
+html[data-theme='dark'] .admin-layout .admin-menu:hover { background: rgb(215 182 111 / 8%); color: #f2dfb6; }
+html[data-theme='light'] .admin-layout .admin-menu:hover { background: #f6efdf; color: #735a2b; }
+html[data-theme='dark'] .admin-layout .admin-menu.active { border-color: rgb(215 182 111 / 22%); background: linear-gradient(100deg, rgb(215 182 111 / 14%), rgb(215 182 111 / 4%)); color: #f0d697; box-shadow: inset 3px 0 #d7b66f; }
+html[data-theme='light'] .admin-layout .admin-menu.active { border-color: #e9ddc3; background: linear-gradient(100deg, #f6efdf, #fbf8f0); color: #7c622e; box-shadow: inset 3px 0 #a17d3a; }
+html[data-theme='dark'] .admin-layout :is(button, a, input, select, textarea):focus-visible { outline-color: #d7b66f; }
+html[data-theme='light'] .admin-layout :is(button, a, input, select, textarea):focus-visible { outline-color: #9e7938; }
+html[data-theme='dark'] .admin-layout .admin-theme-options button.selected { border-color: rgb(215 182 111 / 24%); background: #292317; color: #f0d697; }
+html[data-theme='light'] .admin-layout .admin-theme-options button.selected { border-color: #e5d7b8; background: #fffdf8; color: #805f25; }
+html[data-theme='dark'] .admin-layout .admin-text-button { color: #e2c47e; }
+html[data-theme='light'] .admin-layout .admin-text-button { color: #8a682b; }
+html[data-theme='dark'] .admin-layout .admin-export-button { border-color: rgb(215 182 111 / 24%); background: rgb(215 182 111 / 9%); color: #e2c47e; }
+html[data-theme='light'] .admin-layout .admin-export-button { border-color: #e5d7b8; background: #f7f0e1; color: #80632c; }
+html[data-theme='dark'] .admin-layout .admin-hero-button,
+html[data-theme='dark'] .admin-layout .admin-primary-button { border-color: #e4c985; background: linear-gradient(110deg, #e0c27b, #bd974c); color: #211a0e; box-shadow: 0 8px 23px rgb(0 0 0 / 24%); }
+html[data-theme='light'] .admin-layout .admin-hero-button,
+html[data-theme='light'] .admin-layout .admin-primary-button { border-color: #c09a50; background: linear-gradient(110deg, #d7b76d, #b88c3b); color: #211a0e; }
+html[data-theme='dark'] .admin-layout .admin-logout:hover { border-color: rgb(220 169 102 / 32%); background: rgb(220 169 102 / 11%); color: #e9c878; }
+html[data-theme='light'] .admin-layout .admin-logout:hover { border-color: #e6d5b2; background: #f6efdf; color: #8e6929; }
+html[data-theme] .admin-layout .tone-violet .admin-metric-icon,
+html[data-theme] .admin-layout .tone-mint .admin-metric-icon,
+html[data-theme] .admin-layout .tone-blue .admin-metric-icon,
+html[data-theme] .admin-layout .tone-amber .admin-metric-icon { border: 1px solid rgb(198 162 91 / 19%); background: rgb(198 162 91 / 10%); color: var(--admin-violet); }
+html[data-theme] .admin-layout .admin-chart-bar-track { background: rgb(198 162 91 / 8%); }
+html[data-theme] .admin-layout .admin-chart-bar { background: linear-gradient(180deg, #ecd596 0%, #b88b3b 100%); box-shadow: 0 0 18px rgb(190 151 72 / 20%); }
+html[data-theme] .admin-layout .admin-active-chart-grid { stroke: rgb(198 162 91 / 19%); }
+html[data-theme] .admin-layout .admin-active-chart-label { fill: var(--admin-muted); }
+html[data-theme] .admin-layout .admin-active-chart-note { color: var(--admin-muted); }
+html[data-theme] .admin-layout .admin-active-chart-note i { background: #c8a55e; }
+html[data-theme] .admin-layout .admin-user-page-controls button,
+html[data-theme] .admin-layout .admin-view-user { border-color: var(--admin-border); background: var(--admin-surface-soft); color: var(--admin-violet); }
+
+html[data-theme] .admin-overview-section .admin-welcome-hero {
+  border-color: rgb(225 193 124 / 32%);
+  background: radial-gradient(ellipse at 78% 48%, rgb(199 159 79 / 19%), transparent 27rem), linear-gradient(112deg, #11100d 0%, #191610 57%, #282116 100%);
+  box-shadow: 0 22px 52px rgb(19 15 8 / 22%);
+}
+html[data-theme] .admin-overview-section .admin-hero-kicker { color: #e2c47e; }
+html[data-theme] .admin-overview-section .admin-welcome-copy h2 { color: #fff9eb; }
+html[data-theme] .admin-overview-section .admin-welcome-copy p { color: #c9bea5; }
+html[data-theme] .admin-overview-section .admin-hero-orbit { border-color: rgb(224 193 124 / 22%); }
+html[data-theme] .admin-overview-section .admin-hero-art-core { border-color: rgb(248 222 165 / 36%); background: linear-gradient(145deg, #e1c277, #8e6a2d); color: #1b160b; box-shadow: 0 14px 38px rgb(174 131 48 / 28%), inset 0 1px rgb(255 255 255 / 35%); }
+html[data-theme] .admin-overview-section .admin-hero-float { border-color: rgb(224 193 124 / 24%); background: rgb(28 24 17 / 90%); color: #ead293; }
+html[data-theme] .admin-overview-section .admin-hero-float.float-two { color: #d7b66f; }
+html[data-theme] .admin-overview-section .admin-metric-card { position: relative; overflow: hidden; border-color: var(--admin-border); background: linear-gradient(145deg, var(--admin-surface), var(--admin-surface-soft)); }
+html[data-theme] .admin-overview-section .admin-metric-card::before { position: absolute; inset: 0 auto 0 0; width: 2px; background: linear-gradient(180deg, #e2c47e, rgb(226 196 126 / 8%)); content: ''; }
+html[data-theme] .admin-overview-section .admin-metric-card:hover { border-color: rgb(215 182 111 / 40%); box-shadow: 0 15px 30px rgb(114 83 29 / 15%); }
+html[data-theme] .admin-overview-section .admin-metric-arrow { color: #b99b5c; }
+html[data-theme] .admin-overview-section .admin-metric-card p { color: var(--admin-muted); }
+html[data-theme] .admin-overview-section .admin-metric-card > strong { color: var(--admin-text); }
+html[data-theme] .admin-overview-section .admin-metric-card > small { color: var(--admin-faint); }
+html[data-theme] .admin-overview-section .admin-metric-icon { border: 1px solid rgb(215 182 111 / 18%); background: rgb(215 182 111 / 10%); color: #dec27f; }
+html[data-theme] .admin-overview-section .admin-panel-kicker { color: #b89a5c; }
+html[data-theme] .admin-overview-section .admin-panel-heading h2 { color: var(--admin-text); }
+html[data-theme] .admin-overview-section .admin-panel-heading p { color: var(--admin-muted); }
+html[data-theme] .admin-overview-section .admin-period-chip { border-color: var(--admin-border); background: var(--admin-surface-muted); color: var(--admin-muted); }
+html[data-theme] .admin-overview-section .admin-chart-grid-lines span { border-top-color: rgb(195 162 95 / 17%); }
+html[data-theme] .admin-overview-section .admin-chart-bar-track { background: rgb(203 173 108 / 8%); }
+html[data-theme] .admin-overview-section .admin-chart-bar { background: linear-gradient(180deg, #ecd596 0%, #b88b3b 100%); box-shadow: 0 0 18px rgb(190 151 72 / 23%); }
+html[data-theme] .admin-overview-section .chart-legend-dot { background: #d8b66d; }
+html[data-theme] .admin-overview-section .admin-quick-icon,
+html[data-theme] .admin-overview-section .admin-quick-action:nth-child(2) .admin-quick-icon,
+html[data-theme] .admin-overview-section .admin-quick-action:nth-child(3) .admin-quick-icon { border: 1px solid rgb(215 182 111 / 17%); background: rgb(215 182 111 / 9%); color: #d9bb76; }
+html[data-theme] .admin-overview-section .admin-quick-copy strong { color: var(--admin-text); }
+html[data-theme] .admin-overview-section .admin-quick-copy small,
+html[data-theme] .admin-overview-section .admin-service-note small { color: var(--admin-muted); }
+html[data-theme] .admin-overview-section .admin-quick-arrow { color: #b99b5c; }
+html[data-theme] .admin-overview-section .admin-overview-activity-icon { background: var(--admin-surface-muted); color: var(--admin-violet); }
+html[data-theme='dark'] .admin-overview-section .admin-overview-activity-empty { color: var(--admin-muted); }
+html[data-theme='light'] .admin-overview-section .admin-overview-activity-empty { color: var(--admin-muted); }
+html[data-theme] .admin-overview-section .admin-overview-activity-copy strong { color: var(--admin-text); }
+html[data-theme] .admin-overview-section .admin-overview-activity-copy small,
+html[data-theme] .admin-overview-section .admin-overview-activity-item time { color: var(--admin-muted); }
+
+@media (max-width: 900px) {
+  .admin-overview-bottom-grid { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-overview-section .admin-hero-float { animation: none; }
+}

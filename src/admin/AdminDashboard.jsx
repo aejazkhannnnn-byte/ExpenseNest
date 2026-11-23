@@ -1,10 +1,13 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
+  ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
+  Bell,
   BarChart3,
   CalendarDays,
+  CircleDollarSign,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -22,24 +25,32 @@ import {
   Mail,
   MessageCircle,
   MessageSquareText,
+  PiggyBank,
+  Receipt,
   RefreshCw,
   RotateCcw,
   Search,
   SearchX,
   Send,
   Settings2,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Target,
+  TrendingUp,
   UsersRound,
+  WalletCards,
   X,
 } from 'lucide-react';
 import { supabase } from '../supabase';
 import BrandAsset from '../components/BrandAsset.jsx';
 import { CURRENCIES } from '../currency';
 import { DATE_FORMAT_OPTIONS, formatAppDate, formatAppDateTime } from '../dateFormatting';
+import { getAppLocale } from '../gujaratiLocalization.js';
 import { loadMoreAdminActivity } from '../activityLog';
 import { getFeedbackUnreadCount, loadFeedbackReplies, markFeedbackRepliesRead, sendAdminFeedbackReply } from '../feedbackConversations';
 import AdminThemeControl from './AdminThemeControl';
+import LanguageControl from '../components/LanguageControl.jsx';
 import './AdminDashboard.css';
 
 const MENU = [
@@ -84,7 +95,7 @@ function suspensionExpiryLabel(value) {
 function formatNumber(value) {
   if (value === null || value === undefined || value === '') return '—';
   const number = Number(value);
-  return Number.isFinite(number) ? new Intl.NumberFormat('en-IN').format(number) : value;
+  return Number.isFinite(number) ? new Intl.NumberFormat(getAppLocale()).format(number) : value;
 }
 
 function formatDate(value, options = { day: 'numeric', month: 'short', year: 'numeric' }) {
@@ -147,7 +158,7 @@ function getMonthlyRegistrations(users) {
 
     months.push({
       key: `${date.getFullYear()}-${date.getMonth()}`,
-      label: date.toLocaleDateString('en-IN', { month: 'short' }),
+      label: date.toLocaleDateString(getAppLocale(), { month: 'short' }),
       count,
     });
   }
@@ -210,8 +221,8 @@ function ActiveAccountsChart({ days }) {
       <svg viewBox="0 0 800 210" role="img" aria-label="Daily unique accounts that opened ExpenseNest">
         <defs>
           <linearGradient id="activeAccountBar" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#7d8bff" />
-            <stop offset="100%" stopColor="#37c7a7" />
+            <stop offset="0%" stopColor="#ead18e" />
+            <stop offset="100%" stopColor="#a77c33" />
           </linearGradient>
         </defs>
         {[0, 1, 2, 3].map((line) => {
@@ -273,9 +284,8 @@ class AdminSectionErrorBoundary extends Component {
   }
 }
 
-export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChange, currency, onCurrencyChange, dateFormat, onDateFormatChange, density, onDensityChange, privacyMode, onPrivacyModeChange, weekStart, onWeekStartChange, motionPreference, onMotionPreferenceChange, onResetPreferences }) {
+export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChange, language, onLanguageChange, currency, onCurrencyChange, dateFormat, onDateFormatChange, density, onDensityChange, privacyMode, onPrivacyModeChange, weekStart, onWeekStartChange, motionPreference, onMotionPreferenceChange, onResetPreferences }) {
   const [section, setSection] = useState('Overview');
-  const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [userDisplayIdWarning, setUserDisplayIdWarning] = useState('');
   const [userAccessSetupWarning, setUserAccessSetupWarning] = useState('');
@@ -366,7 +376,6 @@ export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChan
       const displayIds = new Map((displayIdRows || []).map((row) => [row.user_id, row.display_id]));
       const suspendedUsers = new Map((suspendedRows || []).map((row) => [row.user_id, row.banned_until]));
 
-      setStats(data.stats || {});
       setUsers(dashboardUsers.map((user) => ({
         ...user,
         banned_until: suspendedUsers.get(user.id || user.user_id) || user.banned_until || null,
@@ -729,7 +738,7 @@ export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChan
   }, [section, loadFeedback]);
 
   useEffect(() => {
-    if (section === 'Activity') loadActivity();
+    if (section === 'Activity' || section === 'Overview') loadActivity();
   }, [section, loadActivity]);
 
   useEffect(() => {
@@ -769,43 +778,18 @@ export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChan
 
   const unreadFeedbackCount = feedbackUnreadCount;
 
-  const currentMonthCount = monthlyRegistrations[monthlyRegistrations.length - 1]?.count ?? 0;
-  const metrics = [
-    {
-      title: 'Total users',
-      value: formatNumber(stats?.totalUsers ?? users.length),
-      note: stats?.totalUsers !== undefined ? 'All registered accounts' : 'Accounts returned by admin service',
-      icon: UsersRound,
-      tone: 'violet',
-    },
-    {
-      title: 'New this month',
-      value: formatNumber(stats?.newUsers ?? currentMonthCount),
-      note: stats?.newUsers !== undefined ? 'Reported by admin service' : 'Counted from loaded user records',
-      icon: Activity,
-      tone: 'mint',
-    },
-    {
-      title: 'Active users',
-      value: formatNumber(stats?.activeUsers),
-      note: stats?.activeUsers !== undefined ? 'Reported by admin service' : 'Not provided by current data service',
-      icon: Eye,
-      tone: 'blue',
-    },
-    {
-      title: 'Page views',
-      value: formatNumber(stats?.pageViews),
-      note: stats?.pageViews !== undefined ? 'Reported by admin service' : 'Analytics source not connected',
-      icon: BarChart3,
-      tone: 'amber',
-    },
-  ];
-
   function navigateTo(target) {
     setSection(target);
     setSearch('');
     setFilter('All');
     setSelectedUser(null);
+  }
+
+  function refreshOverview() {
+    return Promise.all([
+      loadDashboard(),
+      loadActivity(),
+    ]);
   }
 
   async function copyUserInfo(value, label) {
@@ -890,6 +874,7 @@ export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChan
             <span className="admin-profile-copy"><strong>{adminName}</strong><small>{adminEmail || 'Administrator'}</small></span>
             <button type="button" className="admin-logout" onClick={onLogout} aria-label="Log out" title="Log out">
               <LogOut size={17} />
+              <span>Log out</span>
             </button>
           </div>
         </div>
@@ -908,11 +893,11 @@ export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChan
             <button
               type="button"
               className="admin-refresh"
-              onClick={section === 'Feedback' ? () => loadFeedback() : section === 'Activity' ? () => loadActivity() : section === 'Analytics' ? loadAnalytics : loadDashboard}
-              disabled={section === 'Feedback' ? feedbackBusy : section === 'Activity' ? activityBusy : section === 'Analytics' ? analyticsLoading : loading}
+              onClick={section === 'Feedback' ? () => loadFeedback() : section === 'Activity' ? () => loadActivity() : section === 'Analytics' ? loadAnalytics : section === 'Overview' ? refreshOverview : loadDashboard}
+              disabled={section === 'Feedback' ? feedbackBusy : section === 'Activity' ? activityBusy : section === 'Analytics' ? analyticsLoading : section === 'Overview' ? loading || activityBusy : loading}
             >
-              <RefreshCw size={15} className={(section === 'Feedback' ? feedbackBusy : section === 'Activity' ? activityBusy : section === 'Analytics' ? analyticsLoading : loading) ? 'is-spinning' : ''} />
-              <span>{(section === 'Feedback' ? feedbackBusy : section === 'Activity' ? activityBusy : section === 'Analytics' ? analyticsLoading : loading) ? 'Updating' : 'Refresh data'}</span>
+              <RefreshCw size={15} className={(section === 'Feedback' ? feedbackBusy : section === 'Activity' ? activityBusy : section === 'Analytics' ? analyticsLoading : section === 'Overview' ? loading || activityBusy : loading) ? 'is-spinning' : ''} />
+              <span>{(section === 'Feedback' ? feedbackBusy : section === 'Activity' ? activityBusy : section === 'Analytics' ? analyticsLoading : section === 'Overview' ? loading || activityBusy : loading) ? 'Updating' : 'Refresh data'}</span>
             </button>
             <span className="admin-topbar-avatar" title={adminEmail || adminName}>{adminInitial}</span>
           </div>
@@ -926,7 +911,7 @@ export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChan
               <p>{SECTION_COPY[section]}</p>
             </div>
             {lastUpdated && (
-              <div className="admin-last-updated"><Clock3 size={14} /> Updated {lastUpdated.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</div>
+              <div className="admin-last-updated"><Clock3 size={14} /> Updated {lastUpdated.toLocaleTimeString(getAppLocale(), { hour: 'numeric', minute: '2-digit' })}</div>
             )}
           </div>
 
@@ -952,15 +937,21 @@ export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChan
           ) : (
             <>
               {section === 'Overview' && (
-                <OverviewSection
-                  adminName={adminName}
-                  metrics={metrics}
-                  monthlyRegistrations={monthlyRegistrations}
-                  recentUsers={recentUsers}
-                  navigateTo={navigateTo}
-                  onViewUser={setSelectedUser}
-                  serviceReady={hasLoadedData}
-                />
+                <AdminSectionErrorBoundary sectionName="Overview">
+                  <OverviewSection
+                    adminName={adminName}
+                    users={users}
+                    monthlyRegistrations={monthlyRegistrations}
+                    recentUsers={recentUsers}
+                    recentActivity={activityItems}
+                    activityLoading={activityLoading}
+                    activityError={activityError}
+                    feedbackUnreadCount={unreadFeedbackCount}
+                    navigateTo={navigateTo}
+                    onViewUser={setSelectedUser}
+                    serviceReady={hasLoadedData}
+                  />
+                </AdminSectionErrorBoundary>
               )}
 
               {section === 'Users' && (
@@ -1035,6 +1026,8 @@ export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChan
                   loading={loading}
                   theme={theme}
                   onThemeChange={onThemeChange}
+                  language={language}
+                  onLanguageChange={onLanguageChange}
                   currency={currency}
                   onCurrencyChange={onCurrencyChange}
                   dateFormat={dateFormat}
@@ -1071,79 +1064,77 @@ export default function AdminDashboard({ onLogout, adminUser, theme, onThemeChan
   );
 }
 
-function OverviewSection({ adminName, metrics, monthlyRegistrations, recentUsers, navigateTo, onViewUser, serviceReady }) {
-  const quickActions = [
-    { label: 'Browse users', detail: 'Search registered accounts', icon: UsersRound, target: 'Users' },
-    { label: 'Registration analytics', detail: 'Review the last six months', icon: BarChart3, target: 'Analytics' },
-    { label: 'Admin settings', detail: 'Check workspace and service', icon: Settings2, target: 'Settings' },
+function OverviewSection({ adminName, users, monthlyRegistrations, recentUsers, recentActivity, activityLoading, activityError, feedbackUnreadCount, navigateTo, onViewUser, serviceReady }) {
+  const sixMonthRegistrations = monthlyRegistrations.reduce((sum, month) => sum + month.count, 0);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const newThisMonth = users.filter((user) => {
+    if (!user.created_at) return false;
+    const created = new Date(user.created_at);
+    return !Number.isNaN(created.getTime()) && created >= monthStart && created <= now;
+  }).length;
+  const suspendedCount = users.filter(isUserSuspended).length;
+  const actions = [
+    { label: 'Manage users', detail: 'Review accounts and access', icon: UsersRound, section: 'Users' },
+    { label: 'Review feedback', detail: 'Read and respond to submissions', icon: MessageSquareText, section: 'Feedback' },
+    { label: 'Open analytics', detail: 'See platform usage metrics', icon: BarChart3, section: 'Analytics' },
+    { label: 'View activity', detail: 'Review workspace audit events', icon: History, section: 'Activity' },
   ];
 
   return (
-    <div className="admin-page-content">
+    <div className="admin-page-content admin-overview-section">
       <section className="admin-welcome-hero">
         <div className="admin-welcome-copy">
-          <span className="admin-hero-kicker"><Sparkles size={14} /> ADMIN CONTROL CENTER</span>
-          <h2>Welcome back, {adminName}</h2>
-          <p>Keep track of registrations and manage your ExpenseNest workspace.</p>
-          <button type="button" className="admin-hero-button" onClick={() => navigateTo('Users')}>
-            Manage users <ArrowRight size={16} />
-          </button>
+          <span className="admin-hero-kicker"><Sparkles size={14} /> PLATFORM CONTROL CENTER</span>
+          <h2>Welcome back, <span data-gujarati-preserve>{adminName}</span></h2>
+          <p>Track account growth, support activity, and workspace health in one place.</p>
+          <button type="button" className="admin-hero-button" onClick={() => navigateTo('Users')}>Review accounts <ArrowRight size={16} /></button>
         </div>
-        <div className="admin-hero-art" aria-hidden="true">
-          <div className="admin-hero-orbit orbit-one" />
-          <div className="admin-hero-orbit orbit-two" />
-          <div className="admin-hero-art-core"><LayoutDashboard size={36} /></div>
-          <span className="admin-hero-float float-one"><UsersRound size={17} /></span>
-          <span className="admin-hero-float float-two"><Activity size={17} /></span>
-        </div>
+        <div className="admin-hero-art" aria-hidden="true"><div className="admin-hero-orbit orbit-one" /><div className="admin-hero-orbit orbit-two" /><div className="admin-hero-art-core"><LayoutDashboard size={36} /></div><span className="admin-hero-float float-one"><UsersRound size={17} /></span><span className="admin-hero-float float-two"><Activity size={17} /></span></div>
       </section>
 
-      <section className="admin-metrics-grid" aria-label="Platform metrics">
-        {metrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
+      <section className="admin-metrics-grid" aria-label="Platform statistics">
+        <MetricCard title="Registered accounts" value={formatNumber(users.length)} note="Accounts returned by the admin service" icon={UsersRound} tone="gold" />
+        <MetricCard title="New this month" value={formatNumber(newThisMonth)} note="Platform registrations this month" icon={TrendingUp} tone="gold" />
+        <MetricCard title="Suspended accounts" value={formatNumber(suspendedCount)} note="Accounts with access currently restricted" icon={ShieldAlert} tone="gold" />
+        <MetricCard title="Unread feedback" value={formatNumber(feedbackUnreadCount)} note="Messages waiting for admin review" icon={MessageSquareText} tone="gold" />
       </section>
 
       <div className="admin-overview-grid">
         <section className="admin-panel admin-registration-panel">
-          <div className="admin-panel-heading">
-            <div><span className="admin-panel-kicker">USER ACTIVITY</span><h2>Registration growth</h2><p>Monthly registrations from user records returned by the admin service.</p></div>
-            <span className="admin-period-chip"><CalendarDays size={14} /> Last 6 months</span>
-          </div>
+          <div className="admin-panel-heading"><div><span className="admin-panel-kicker">ACCOUNT MOMENTUM</span><h2>Registration growth</h2><p>New platform accounts by month.</p></div><span className="admin-period-chip"><CalendarDays size={14} /> 6 months · {formatNumber(sixMonthRegistrations)} accounts</span></div>
           <RegistrationChart months={monthlyRegistrations} />
           <div className="admin-chart-footnote"><span className="chart-legend-dot" /> New accounts <span className="admin-chart-caption">Counts reflect the records currently available to this dashboard.</span></div>
         </section>
 
-        <section className="admin-panel admin-quick-panel">
-          <div className="admin-panel-heading"><div><span className="admin-panel-kicker">SHORTCUTS</span><h2>Quick actions</h2><p>Jump to a workspace area.</p></div></div>
-          <div className="admin-quick-actions">
-            {quickActions.map((action) => {
-              const Icon = action.icon;
-              return (
-                <button type="button" className="admin-quick-action" key={action.target} onClick={() => navigateTo(action.target)}>
-                  <span className="admin-quick-icon"><Icon size={18} /></span>
-                  <span className="admin-quick-copy"><strong>{action.label}</strong><small>{action.detail}</small></span>
-                  <ArrowRight size={16} className="admin-quick-arrow" />
-                </button>
-              );
-            })}
-          </div>
-          <div className={`admin-service-note${serviceReady ? ' ready' : ''}`}>
-            <span className="admin-service-indicator" />
-            <span><strong>{serviceReady ? 'Dashboard service responding' : 'Waiting for dashboard service'}</strong><small>{serviceReady ? 'Latest data loaded successfully' : 'Data status has not been confirmed'}</small></span>
-          </div>
+        <section className="admin-panel admin-overview-activity-panel">
+          <div className="admin-panel-heading"><div><span className="admin-panel-kicker">WORKSPACE AUDIT</span><h2>Recent activity</h2><p>Account, settings, and support events.</p></div><button type="button" className="admin-text-button" onClick={() => navigateTo('Activity')}>View activity <ArrowRight size={15} /></button></div>
+          {activityLoading && !recentActivity.length ? <div className="admin-overview-activity-empty"><LoaderCircle size={17} className="is-spinning" /> Loading activity</div> : recentActivity.length ? <div className="admin-overview-activity-list">{recentActivity.slice(0, 5).map((item) => {
+            const details = item.details && typeof item.details === 'object' ? item.details : {};
+            const isAccountAction = item.target_type === 'user';
+            const isAdminAction = item.target_type === 'admin';
+            const Icon = isAccountAction ? ShieldCheck : isAdminAction ? Settings2 : MessageSquareText;
+            const target = isAccountAction ? 'Account ' + (details.user_display_id || '#' + String(item.target_id || '').slice(0, 8)) : isAdminAction ? (details.setting ? 'Setting: ' + details.setting : 'Administrator workspace') : details.user_email || details.category || 'Customer feedback';
+            return <article className="admin-overview-activity-item" key={item.id}><span className="admin-overview-activity-icon"><Icon size={15} /></span><span className="admin-overview-activity-copy"><strong>{getActionLabel(item, details)}</strong><small>{target}</small></span><time dateTime={item.created_at}>{formatDate(item.created_at, { day: 'numeric', month: 'short' })}</time></article>;
+          })}</div> : <div className="admin-overview-activity-empty"><History size={17} /><span>{activityError ? 'Activity log is not available yet.' : 'No recent workspace activity to show.'}</span></div>}
         </section>
       </div>
 
-      <section className="admin-panel admin-recent-panel">
-        <div className="admin-panel-heading">
-          <div><span className="admin-panel-kicker">LATEST ACCOUNTS</span><h2>Recent registrations</h2><p>The newest accounts returned by the admin service.</p></div>
-          <button type="button" className="admin-text-button" onClick={() => navigateTo('Users')}>View all users <ArrowRight size={15} /></button>
-        </div>
-        <UserTable users={recentUsers} onViewUser={onViewUser} emptyTitle="No registrations yet" emptyMessage="New user accounts will appear here when available." />
-      </section>
+      <div className="admin-overview-bottom-grid">
+        <section className="admin-panel admin-recent-panel">
+          <div className="admin-panel-heading"><div><span className="admin-panel-kicker">LATEST ACCOUNTS</span><h2>Recent registrations</h2><p>The newest accounts returned by the admin service.</p></div><button type="button" className="admin-text-button" onClick={() => navigateTo('Users')}>View all users <ArrowRight size={15} /></button></div>
+          <UserTable users={recentUsers} onViewUser={onViewUser} emptyTitle="No registrations yet" emptyMessage="New user accounts will appear here when available." />
+        </section>
+
+        <section className="admin-panel admin-quick-panel">
+          <div className="admin-panel-heading"><div><span className="admin-panel-kicker">SHORTCUTS</span><h2>Quick actions</h2><p>Manage the platform without opening personal finance records.</p></div></div>
+          <div className="admin-quick-actions">{actions.map((action) => { const Icon = action.icon; return <button type="button" className="admin-quick-action" key={action.label} onClick={() => navigateTo(action.section)}><span className="admin-quick-icon"><Icon size={18} /></span><span className="admin-quick-copy"><strong>{action.label}</strong><small>{action.detail}</small></span><ArrowRight size={16} className="admin-quick-arrow" /></button>; })}</div>
+          <div className={'admin-service-note' + (serviceReady ? ' ready' : '')}><span className="admin-service-indicator" /><span><strong>{serviceReady ? 'Admin service connected' : 'Admin service status unavailable'}</strong><small>Personal transaction amounts and balances are excluded from this dashboard.</small></span></div>
+        </section>
+      </div>
     </div>
   );
 }
-
 function UsersSection({ users, loadedCount, search, setSearch, filter, setFilter, idSetupWarning, accessSetupWarning, onViewUser, onExport }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -1552,7 +1543,7 @@ function AdminFeedbackCard({ item, assignees, assigneeById, triageReady, onUpdat
         <div className="admin-feedback-sender">
           <span className="admin-feedback-avatar">{sender.charAt(0).toUpperCase()}</span>
           <div>
-            {item.user_email ? <a href={`mailto:${item.user_email}`}>{item.user_email}</a> : <strong>{sender}</strong>}
+            {item.user_email ? <a href={`mailto:${item.user_email}`} data-gujarati-preserve>{item.user_email}</a> : <strong data-gujarati-preserve>{sender}</strong>}
             <small><Clock3 size={12} /> {formatDateTime(item.created_at)}</small>
           </div>
         </div>
@@ -1565,12 +1556,12 @@ function AdminFeedbackCard({ item, assignees, assigneeById, triageReady, onUpdat
         <span className={`admin-feedback-category category-${item.category}`}>{categoryLabels[item.category] || item.category || 'General'}</span>
         <span className="admin-feedback-id">#{String(item.id).slice(0, 8)}</span>
       </div>
-      <p className="admin-feedback-message">{item.message}</p>
+      <p className="admin-feedback-message" data-gujarati-preserve>{item.message}</p>
 
       <div className="admin-feedback-card-bottom">
         <label>
           <span>Manage status</span>
-          <select value={item.status} onChange={(event) => onUpdateStatus(item.id, event.target.value)} disabled={updating} aria-label={`Update feedback status for ${sender}`}>
+          <select value={item.status} onChange={(event) => onUpdateStatus(item.id, event.target.value)} disabled={updating} aria-label="Update feedback status">
             <option value="new">New</option>
             <option value="in_review">In review</option>
             <option value="resolved">Resolved</option>
@@ -1580,15 +1571,15 @@ function AdminFeedbackCard({ item, assignees, assigneeById, triageReady, onUpdat
         <div className="admin-feedback-triage-controls">
           <label>
             <span>Assigned admin</span>
-            <select value={item.assigned_to || ''} onChange={(event) => onUpdateTriage(item.id, event.target.value || null, item.priority || 'normal')} disabled={updating || !triageReady || !assignees.length} aria-label={`Assign feedback for ${sender}`}>
+            <select value={item.assigned_to || ''} onChange={(event) => onUpdateTriage(item.id, event.target.value || null, item.priority || 'normal')} disabled={updating || !triageReady || !assignees.length} aria-label="Assign feedback">
               <option value="">Unassigned</option>
-              {assignees.map((admin) => <option value={admin.user_id} key={admin.user_id}>{admin.display_name}{admin.email ? ` · ${admin.email}` : ''}</option>)}
+              {assignees.map((admin) => <option value={admin.user_id} key={admin.user_id} data-gujarati-preserve>{admin.display_name}{admin.email ? ` · ${admin.email}` : ''}</option>)}
             </select>
             {item.assigned_to && <small>{assigneeById.get(item.assigned_to)?.email || ''}</small>}
           </label>
           <label>
             <span>Priority</span>
-            <select value={item.priority || 'normal'} onChange={(event) => onUpdateTriage(item.id, item.assigned_to || null, event.target.value)} disabled={updating || !triageReady} aria-label={`Set feedback priority for ${sender}`}>
+            <select value={item.priority || 'normal'} onChange={(event) => onUpdateTriage(item.id, item.assigned_to || null, event.target.value)} disabled={updating || !triageReady} aria-label="Set feedback priority">
               <option value="low">Low</option>
               <option value="normal">Normal</option>
               <option value="high">High</option>
@@ -1609,14 +1600,14 @@ function AdminFeedbackCard({ item, assignees, assigneeById, triageReady, onUpdat
         <div className="admin-feedback-conversation">
           <div className="admin-feedback-thread-list">
             <div className="admin-feedback-thread-message user-message">
-              <div><strong>{sender}</strong><time>{formatDateTime(item.created_at)}</time></div>
-              <p>{item.message}</p>
+              <div><strong data-gujarati-preserve>{sender}</strong><time>{formatDateTime(item.created_at)}</time></div>
+              <p data-gujarati-preserve>{item.message}</p>
             </div>
             {(item.replies || []).length === 0 && <p className="admin-feedback-thread-empty">No replies yet. Send the first response below.</p>}
             {(item.replies || []).map((reply) => (
               <div className={`admin-feedback-thread-message${reply.author_role === 'admin' ? ' admin-message' : ' user-message'}`} key={reply.id}>
                 <div><strong>{reply.author_role === 'admin' ? 'ExpenseNest support' : sender}</strong><time>{formatDateTime(reply.created_at)}</time></div>
-                <p>{reply.message}</p>
+                <p data-gujarati-preserve>{reply.message}</p>
               </div>
             ))}
           </div>
@@ -1640,6 +1631,23 @@ function AdminFeedbackCard({ item, assignees, assigneeById, triageReady, onUpdat
       )}
     </article>
   );
+}
+
+function getActionLabel(item, details) {
+  if (item.target_type === 'admin') {
+    if (item.action === 'admin_signed_in') return 'Administrator signed in';
+    if (item.action === 'admin_signed_out') return 'Administrator signed out';
+    return 'Global setting changed';
+  }
+  if (item.target_type === 'feedback') {
+    if (item.action === 'feedback_response_sent') return 'Replied to user feedback';
+    if (item.action === 'feedback_response_updated') return 'Updated a feedback reply';
+    if (item.action === 'feedback_triage_updated') return 'Updated feedback assignment or priority';
+    return 'Feedback status changed';
+  }
+  return details.requested_action === 'suspend' ? 'Account access blocked'
+    : details.requested_action === 'reactivate' ? 'Account access restored'
+      : 'Account access updated';
 }
 
 function ActivitySection({ items, loading, loadingMore, error, onRefresh, onLoadMore, hasMore }) {
@@ -1680,23 +1688,6 @@ function ActivitySection({ items, loading, loadingMore, error, onRefresh, onLoad
     const matchesRange = cutoff === null || new Date(item.created_at).getTime() >= cutoff;
     return matchesType && matchesSearch && matchesRange;
   });
-
-  function getActionLabel(item, details) {
-    if (item.target_type === 'admin') {
-      if (item.action === 'admin_signed_in') return 'Administrator signed in';
-      if (item.action === 'admin_signed_out') return 'Administrator signed out';
-      return 'Global setting changed';
-    }
-    if (item.target_type === 'feedback') {
-      if (item.action === 'feedback_response_sent') return 'Replied to user feedback';
-      if (item.action === 'feedback_response_updated') return 'Updated a feedback reply';
-      if (item.action === 'feedback_triage_updated') return 'Updated feedback assignment or priority';
-      return 'Feedback status changed';
-    }
-    return details.requested_action === 'suspend' ? 'Account access blocked'
-      : details.requested_action === 'reactivate' ? 'Account access restored'
-        : 'Account access updated';
-  }
 
   function exportVisibleActivity() {
     if (!visibleItems.length) return;
@@ -1863,7 +1854,7 @@ function ActivitySection({ items, loading, loadingMore, error, onRefresh, onLoad
   );
 }
 
-function SettingsSection({ adminName, adminEmail, serviceReady, loading, theme, onThemeChange, currency, onCurrencyChange, dateFormat, onDateFormatChange, density, onDensityChange, privacyMode, onPrivacyModeChange, weekStart, onWeekStartChange, motionPreference, onMotionPreferenceChange, onResetPreferences }) {
+function SettingsSection({ adminName, adminEmail, serviceReady, loading, theme, onThemeChange, language, onLanguageChange, currency, onCurrencyChange, dateFormat, onDateFormatChange, density, onDensityChange, privacyMode, onPrivacyModeChange, weekStart, onWeekStartChange, motionPreference, onMotionPreferenceChange, onResetPreferences }) {
   const rows = [
     { icon: ShieldCheck, title: 'Administrator access', detail: 'Signed in through Supabase and checked against the admin list.', status: 'Verified', ready: true },
     { icon: Database, title: 'Dashboard data service', detail: 'Supabase Edge Function: admin-dashboard.', status: loading ? 'Updating' : serviceReady ? 'Responding' : 'Not checked', ready: serviceReady },
@@ -1878,6 +1869,10 @@ function SettingsSection({ adminName, adminEmail, serviceReady, loading, theme, 
           <div className="admin-global-preference">
             <div><strong>Appearance theme</strong><small>Applied across the whole application.</small></div>
             <AdminThemeControl theme={theme} onChange={onThemeChange} variant="segmented" />
+          </div>
+          <div className="admin-global-preference">
+            <div><strong>Language settings</strong><small>Used throughout the User and Admin Panels.</small></div>
+            <LanguageControl language={language} onChange={onLanguageChange} id="admin-language-preference" />
           </div>
           <label className="admin-global-preference admin-currency-preference">
             <span><strong>Currency display</strong><small>Updates amount labels throughout the User Screen.</small></span>
@@ -1982,7 +1977,7 @@ function UserTable({ users, onViewUser, emptyTitle, emptyMessage }) {
                 <td>
                   <div className="admin-user-cell">
                     <span className="admin-user-avatar">{(user.email || 'U').charAt(0).toUpperCase()}</span>
-                    <span><strong>{email}</strong><small>{displayId}</small></span>
+                    <span data-gujarati-preserve><strong>{email}</strong><small>{displayId}</small></span>
                   </div>
                 </td>
                 <td>{formatDate(user.created_at, { day: 'numeric', month: 'short', year: 'numeric' })}</td>

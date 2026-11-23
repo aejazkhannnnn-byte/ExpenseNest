@@ -110,11 +110,11 @@ export default function Auth({ onAuthSuccess }) {
 
       <div className="auth-card">
         <div className="auth-brand">
-          <BrandAsset
-            variant="lockup"
-            className="auth-brand-lockup"
-            alt="ExpenseNest — Smart money. Better future."
-          />
+          <span className="auth-brand-mark"><BrandAsset /></span>
+          <span className="auth-brand-copy">
+                <strong data-gujarati-preserve>ExpenseNest</strong>
+                <small>Smart money · Better future</small>
+          </span>
         </div>
 
         <div className="auth-heading">
@@ -396,17 +396,17 @@ export default function Auth({ onAuthSuccess }) {
 
         .auth-brand {
           display: flex;
-          justify-content: center;
           align-items: center;
+          justify-content: center;
+          gap: 14px;
           margin-bottom: 30px;
         }
 
-        .auth-brand-lockup {
-          width: min(100%, 290px);
-          height: auto;
-          border-radius: 14px;
-          box-shadow: 0 12px 30px rgba(0,0,0,.24);
-        }
+        .auth-brand-mark { width: 58px; height: 58px; flex: 0 0 58px; overflow: hidden; border: 1px solid rgba(67,218,183,.28); border-radius: 16px; background: #061329; box-shadow: 0 10px 26px rgba(0,0,0,.28); }
+        .auth-brand-mark .brand-asset-mark { width: 100%; height: 100%; object-fit: cover; }
+        .auth-brand-copy { display: grid; gap: 5px; text-align: left; }
+        .auth-brand-copy strong { color: #f3f6ff; font-size: 22px; font-weight: 700; letter-spacing: -.03em; }
+        .auth-brand-copy small { color: #9eafc9; font-size: 11px; line-height: 1.45; }
 
         .auth-heading {
           text-align: center;
@@ -648,9 +648,8 @@ export default function Auth({ onAuthSuccess }) {
             padding: 16px;
           }
 
-          .auth-brand-lockup {
-            width: min(100%, 250px);
-          }
+          .auth-brand-mark { width: 52px; height: 52px; flex-basis: 52px; }
+          .auth-brand-copy strong { font-size: 20px; }
 
           .auth-card {
             padding: 28px 22px;

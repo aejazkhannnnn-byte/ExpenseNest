@@ -1,8 +1,9 @@
-import { CURRENCY_STORAGE_KEY, isSupportedCurrency } from './currency';
+import { CURRENCY_STORAGE_KEY, isSupportedCurrency } from './currency.js';
 
 export const SHARED_PREFERENCES_STORAGE_KEY = 'expenseNestSharedPreferences';
 export const DEFAULT_SHARED_PREFERENCES = {
   theme: 'dark',
+  language: 'en',
   currency: 'INR',
   dateFormat: 'regional',
   density: 'comfortable',
@@ -13,6 +14,7 @@ export const DEFAULT_SHARED_PREFERENCES = {
 
 export const SHARED_PREFERENCE_STORAGE_KEYS = {
   theme: 'expenseNestTheme',
+  language: 'expenseNestLanguage',
   currency: CURRENCY_STORAGE_KEY,
   dateFormat: 'expenseNestDateFormat',
   density: 'expenseNestDensity',
@@ -25,6 +27,7 @@ const STORAGE_KEY_BY_SETTING = SHARED_PREFERENCE_STORAGE_KEYS;
 
 function isValidSetting(name, value) {
   if (name === 'theme') return value === 'light' || value === 'dark';
+  if (name === 'language') return value === 'en' || value === 'gu';
   if (name === 'currency') return isSupportedCurrency(value);
   if (name === 'dateFormat') return ['regional', 'dmy', 'mdy', 'ymd'].includes(value);
   if (name === 'density') return value === 'comfortable' || value === 'compact';

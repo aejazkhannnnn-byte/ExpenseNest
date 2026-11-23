@@ -1,11 +1,15 @@
-import { getSharedPreference } from './sharedPreferences';
+import { getSharedPreference } from './sharedPreferences.js';
+import { getAppLocale, getPreferredLanguage } from './gujaratiLocalization.js';
 
 export const DATE_FORMAT_OPTIONS = [
-  { value: 'regional', label: 'Regional - 21 Nov 2026' },
+  { value: 'regional', label: 'Regional · 21 Nov 2026' },
   { value: 'dmy', label: 'DD/MM/YYYY - 21/11/2026' },
   { value: 'mdy', label: 'MM/DD/YYYY - 11/21/2026' },
   { value: 'ymd', label: 'YYYY-MM-DD - 2026-11-21' },
 ];
+
+const GUJARATI_DIGITS = '૦૧૨૩૪૫૬૭૮૯';
+const toGujaratiDigits = (value) => String(value).replace(/\d/g, (digit) => GUJARATI_DIGITS[Number(digit)]);
 
 function parseDate(value) {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -22,26 +26,27 @@ function formatNumericDate(date, format) {
   const year = String(date.getFullYear()).padStart(4, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
-  if (format === 'ymd') return `${year}-${month}-${day}`;
-  if (format === 'mdy') return `${month}/${day}/${year}`;
-  return `${day}/${month}/${year}`;
+  const formatDigits = getPreferredLanguage() === 'gu' ? toGujaratiDigits : (value) => value;
+  if (format === 'ymd') return formatDigits(`${year}-${month}-${day}`);
+  if (format === 'mdy') return formatDigits(`${month}/${day}/${year}`);
+  return formatDigits(`${day}/${month}/${year}`);
 }
 
 export function formatAppDate(value, options = { day: 'numeric', month: 'short', year: 'numeric' }) {
   const date = parseDate(value);
-  if (!date) return 'Date not available';
+  if (!date) return getPreferredLanguage() === 'gu' ? 'તારીખ ઉપલબ્ધ નથી' : 'Date unavailable';
 
   const dateFormat = getSharedPreference('dateFormat') || 'regional';
   if (dateFormat !== 'regional' && options.day && options.month && options.year) {
     return formatNumericDate(date, dateFormat);
   }
-  return date.toLocaleDateString('en-IN', options);
+  return date.toLocaleDateString(getAppLocale(), options);
 }
 
 export function formatAppDateTime(value, options = { day: 'numeric', month: 'long', year: 'numeric' }) {
   const date = parseDate(value);
-  if (!date) return 'Date not available';
+  if (!date) return getPreferredLanguage() === 'gu' ? 'તારીખ ઉપલબ્ધ નથી' : 'Date unavailable';
   const dateLabel = formatAppDate(date, options);
-  const timeLabel = date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+  const timeLabel = date.toLocaleTimeString(getAppLocale(), { hour: 'numeric', minute: '2-digit' });
   return `${dateLabel}, ${timeLabel}`;
 }

@@ -5,6 +5,7 @@ import AdminLogin from './AdminLogin';
 import AdminDashboard from './AdminDashboard';
 import AdminThemeControl from './AdminThemeControl';
 import { recordAdminActivity } from '../activityLog';
+import { getPreferredLanguage, setPreferredLanguage } from '../gujaratiLocalization.js';
 import { CURRENCY_STORAGE_KEY, DEFAULT_CURRENCY, isSupportedCurrency } from '../currency';
 import {
   DEFAULT_SHARED_PREFERENCES,
@@ -43,6 +44,7 @@ function readSavedPreference(name) {
 
 export default function AdminPortal() {
   const [theme, setTheme] = useState(readSavedTheme);
+  const [language, setLanguage] = useState(() => getSharedPreference('language') || getPreferredLanguage());
   const [currency, setCurrency] = useState(readSavedCurrency);
   const [dateFormat, setDateFormat] = useState(() => readSavedPreference('dateFormat'));
   const [density, setDensity] = useState(() => readSavedPreference('density'));
@@ -66,6 +68,10 @@ export default function AdminPortal() {
   }, [theme]);
 
   useEffect(() => {
+    setPreferredLanguage(language);
+  }, [language]);
+
+  useEffect(() => {
     document.documentElement.dataset.density = density;
   }, [density]);
 
@@ -78,6 +84,7 @@ export default function AdminPortal() {
     function syncPreferences(event) {
       if (event.type === 'storage' && event.key && ![...Object.values(SHARED_PREFERENCE_STORAGE_KEYS), 'expenseNestSharedPreferences'].includes(event.key)) return;
       const nextTheme = readSavedTheme();
+      const nextLanguage = getSharedPreference('language') || getPreferredLanguage();
       const nextCurrency = readSavedCurrency();
       const nextDateFormat = readSavedPreference('dateFormat');
       const nextDensity = readSavedPreference('density');
@@ -85,6 +92,7 @@ export default function AdminPortal() {
       const nextWeekStart = readSavedPreference('weekStart');
       const nextMotionPreference = readSavedPreference('motionPreference');
       setTheme(nextTheme);
+      setLanguage(nextLanguage);
       setCurrency(nextCurrency);
       setDateFormat(nextDateFormat);
       setDensity(nextDensity);
@@ -191,6 +199,14 @@ export default function AdminPortal() {
     void recordAdminActivity('admin_setting_changed', 'theme');
   }
 
+  function handleLanguageChange(nextLanguage) {
+    if (!['en', 'gu'].includes(nextLanguage) || nextLanguage === language) return;
+    writeSharedPreference('language', nextLanguage);
+    setPreferredLanguage(nextLanguage);
+    setLanguage(nextLanguage);
+    void recordAdminActivity('admin_setting_changed', 'language');
+  }
+
   function handleCurrencyChange(event) {
     const nextCurrency = event.target.value;
     if (!isSupportedCurrency(nextCurrency) || nextCurrency === currency) return;
@@ -244,6 +260,7 @@ export default function AdminPortal() {
     if (!confirmed) return;
     resetSharedPreferences();
     setTheme(DEFAULT_SHARED_PREFERENCES.theme);
+    setLanguage(DEFAULT_SHARED_PREFERENCES.language);
     setCurrency(DEFAULT_SHARED_PREFERENCES.currency);
     setDateFormat(DEFAULT_SHARED_PREFERENCES.dateFormat);
     setDensity(DEFAULT_SHARED_PREFERENCES.density);
@@ -301,6 +318,8 @@ export default function AdminPortal() {
     onLogout={handleLogout}
     adminUser={session.user}
     theme={theme}
+    language={language}
+    onLanguageChange={handleLanguageChange}
     onThemeChange={handleThemeChange}
     currency={currency}
     onCurrencyChange={handleCurrencyChange}

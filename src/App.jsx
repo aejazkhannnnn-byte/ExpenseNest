@@ -2,7 +2,9 @@ import FamilySharing from './FamilySharing';
 import UserActivityPanel from './components/UserActivityPanel';
 import UserFeedbackCenter from './components/UserFeedbackCenter';
 import BrandAsset from './components/BrandAsset.jsx';
+import { getAppLocale, getPreferredLanguage, setPreferredLanguage, translateForCurrentLanguage } from './gujaratiLocalization.js';
 import Footer from './components/Footer.jsx';
+import LanguageControl from './components/LanguageControl.jsx';
 import { recordUserActivity } from './activityLog';
 import { getFeedbackUnreadCount } from './feedbackConversations';
 import { CURRENCIES, CURRENCY_STORAGE_KEY, DEFAULT_CURRENCY, formatCurrency, formatCurrencyForExport, getPreferredCurrency, isSupportedCurrency } from './currency.js';
@@ -486,6 +488,9 @@ function parseFullBackup(source) {
   if (data.motionPreference !== undefined && !['system', 'reduced'].includes(data.motionPreference)) {
     throw new Error('The backup contains an unsupported motion preference.');
   }
+  if (data.language !== undefined && !['en', 'gu'].includes(data.language)) {
+    throw new Error('The backup contains an unsupported language preference.');
+  }
   return backup;
 }
 
@@ -529,6 +534,7 @@ export default function App({ user }) {
   const [categoryBudgetDrafts, setCategoryBudgetDrafts] = useState({});
   const [categoryBudgetNotice, setCategoryBudgetNotice] = useState('');
   const [theme, setTheme] = useState(getSavedTheme);
+  const [language, setLanguage] = useState(() => getSharedPreference('language') || getPreferredLanguage());
   const [currency, setCurrency] = useState(() => getSharedPreference('currency') || getPreferredCurrency());
   const [dateFormat, setDateFormat] = useState(() => getSharedPreference('dateFormat') || DEFAULT_SHARED_PREFERENCES.dateFormat);
   const [density, setDensity] = useState(() => getSharedPreference('density') || DEFAULT_SHARED_PREFERENCES.density);
@@ -547,6 +553,37 @@ export default function App({ user }) {
       // Activity history is optional and must never block the financial action itself.
     });
   }
+
+  useEffect(() => {
+    const currentUrl = new URL(window.location.href);
+    const quickAction = currentUrl.searchParams.get('quickAction');
+    const targetId = currentUrl.hash.slice(1);
+    if (quickAction === 'income' || quickAction === 'expense') {
+      setForm((current) => ({ ...current, type: quickAction }));
+    }
+    if (quickAction) {
+      currentUrl.searchParams.delete('quickAction');
+      window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+    }
+    if (!targetId) return undefined;
+    if (sectionNavigation.some((item) => item.id === targetId)) setActiveSection(targetId);
+    let attempts = 0;
+    let timer = 0;
+    const scrollToTarget = () => {
+      const target = document.getElementById(targetId);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else if (attempts < 16) {
+        attempts += 1;
+        timer = window.setTimeout(scrollToTarget, 80);
+      }
+    };
+    const frame = window.requestAnimationFrame(scrollToTarget);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user?.id) {
@@ -614,8 +651,8 @@ export default function App({ user }) {
     const monthItems = transactions.filter((item) => transactionDateKey(item.date).slice(0, 7) === month);
     return {
       key: month,
-      label: new Date(`${month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short' }),
-      fullLabel: new Date(`${month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
+      label: new Date(`${month}-01T00:00:00`).toLocaleDateString(getAppLocale(), { month: 'short' }),
+      fullLabel: new Date(`${month}-01T00:00:00`).toLocaleDateString(getAppLocale(), { month: 'long', year: 'numeric' }),
       income: monthItems.filter((item) => item.type === 'income').reduce((sum, item) => sum + Number(item.amount), 0),
       expense: monthItems.filter((item) => item.type === 'expense').reduce((sum, item) => sum + Number(item.amount), 0),
     };
@@ -670,9 +707,9 @@ export default function App({ user }) {
   ));
   const visibleRecurringRules = recurringRules.filter((rule) => rule.startMonth <= selectedMonth);
   const selectedMonthLabel = new Date(`${selectedMonth}-01T00:00:00`)
-    .toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    .toLocaleDateString(getAppLocale(), { month: 'long', year: 'numeric' });
   const previousMonthLabel = new Date(`${previousMonthKey}-01T00:00:00`)
-    .toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    .toLocaleDateString(getAppLocale(), { month: 'long', year: 'numeric' });
   const todayKey = localDateKey();
   const knownAccountIds = new Set(accounts.map((account) => account.id));
   const accountStats = accounts.map((account) => {
@@ -852,6 +889,11 @@ export default function App({ user }) {
   }, [theme]);
 
   useEffect(() => {
+    writeSharedPreference('language', language);
+    setPreferredLanguage(language);
+  }, [language]);
+
+  useEffect(() => {
     writeSharedPreference('currency', currency);
   }, [currency]);
 
@@ -884,6 +926,7 @@ export default function App({ user }) {
       if (event.type === 'storage' && changedKey && ![...Object.values(SHARED_PREFERENCE_STORAGE_KEYS), SHARED_PREFERENCES_STORAGE_KEY].includes(changedKey)) return;
 
       const nextTheme = getSharedPreference('theme');
+      const nextLanguage = getSharedPreference('language');
       const nextCurrency = getSharedPreference('currency');
       const nextDateFormat = getSharedPreference('dateFormat');
       const nextDensity = getSharedPreference('density');
@@ -891,6 +934,7 @@ export default function App({ user }) {
       const nextWeekStart = getSharedPreference('weekStart');
       const nextMotionPreference = getSharedPreference('motionPreference');
       if (nextTheme) setTheme(nextTheme);
+      if (nextLanguage) setLanguage(nextLanguage);
       if (nextCurrency && isSupportedCurrency(nextCurrency)) setCurrency(nextCurrency);
       if (nextDateFormat) setDateFormat(nextDateFormat);
       if (nextDensity) setDensity(nextDensity);
@@ -928,8 +972,8 @@ export default function App({ user }) {
 
     try {
       const notification = new window.Notification(
-        newReminders.some(({ daysUntil }) => daysUntil < 0) ? 'Recurring payment overdue' : 'Upcoming recurring payment',
-        { body: messages.join(' · '), tag: `expensenest-reminders-${today}-${newReminders.map(({ rule }) => rule.id).join('-').slice(0, 80)}` },
+        translateForCurrentLanguage(newReminders.some(({ daysUntil }) => daysUntil < 0) ? 'Recurring payment overdue' : 'Upcoming recurring payment'),
+        { body: translateForCurrentLanguage(messages.join(' · ')), tag: `expensenest-reminders-${today}-${newReminders.map(({ rule }) => rule.id).join('-').slice(0, 80)}` },
       );
       notification.onclick = () => {
         window.focus();
@@ -1315,6 +1359,7 @@ export default function App({ user }) {
         recurringRules,
         goals,
         theme,
+        language,
         currency,
         dateFormat,
         density,
@@ -1375,6 +1420,7 @@ export default function App({ user }) {
     const data = backupPreview.backup.data;
     const nextMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(data.selectedMonth) ? data.selectedMonth : currentMonthKey();
     const nextTheme = data.theme === 'light' ? 'light' : 'dark';
+    const nextLanguage = data.language === 'gu' ? 'gu' : 'en';
     const nextCurrency = isSupportedCurrency(data.currency) ? data.currency : DEFAULT_CURRENCY;
     const nextDateFormat = DATE_FORMAT_OPTIONS.some(({ value }) => value === data.dateFormat)
       ? data.dateFormat
@@ -1397,6 +1443,7 @@ export default function App({ user }) {
       [GOALS_KEY, JSON.stringify(data.goals)],
       [BUDGET_KEY, data.monthlyBudget ? String(data.monthlyBudget) : null],
       ['expenseNestTheme', nextTheme],
+      [SHARED_PREFERENCE_STORAGE_KEYS.language, nextLanguage],
       [CURRENCY_KEY, nextCurrency],
       [SHARED_PREFERENCE_STORAGE_KEYS.dateFormat, nextDateFormat],
       [SHARED_PREFERENCE_STORAGE_KEYS.density, nextDensity],
@@ -1413,6 +1460,7 @@ export default function App({ user }) {
       });
       writeSharedPreferences({
         theme: nextTheme,
+        language: nextLanguage,
         currency: nextCurrency,
         dateFormat: nextDateFormat,
         density: nextDensity,
@@ -1451,6 +1499,7 @@ export default function App({ user }) {
     setEditingId(null);
     setRepeatMonthly(false);
     setTheme(nextTheme);
+    setLanguage(nextLanguage);
     setCurrency(nextCurrency);
     setDateFormat(nextDateFormat);
     setDensity(nextDensity);
@@ -1642,21 +1691,21 @@ export default function App({ user }) {
           {accountStats.map((account) => <article className={`account-card ${account.balance < 0 ? 'negative' : ''}`} key={account.id}>
             <div className="account-card-heading">
               <span className={`account-card-icon ${defaultAccounts.some((item) => item.id === account.id) ? account.id : 'custom'}`}>{account.id === 'cash' ? '₹' : account.name.slice(0, 1).toUpperCase()}</span>
-              <div><strong>{account.name}</strong><small>{account.transactionCount} entries</small></div>
-              {!defaultAccounts.some((item) => item.id === account.id) && <button className="account-delete" type="button" onClick={() => deleteAccount(account.id)} aria-label={`Remove ${account.name}`} title="Remove account"><Trash2 size={13} aria-hidden="true" /></button>}
+              <div><strong data-gujarati-preserve>{account.name}</strong><small>{account.transactionCount} entries</small></div>
+              {!defaultAccounts.some((item) => item.id === account.id) && <button className="account-delete" type="button" onClick={() => deleteAccount(account.id)} aria-label="Remove account" title="Remove account"><Trash2 size={13} aria-hidden="true" /></button>}
             </div>
             <div className="account-balance"><span>Balance now</span><strong>{formatCurrency(account.balance)}</strong></div>
             <div className="account-month-spend"><span>{selectedMonthLabel} spending</span><strong>{formatCurrency(account.monthExpenses)}</strong></div>
             <form className="account-opening-form" onSubmit={(event) => saveAccountOpeningBalance(event, account.id)}>
               <label htmlFor={`account-opening-${account.id}`}>Starting balance</label>
-              <div><input id={`account-opening-${account.id}`} type="number" step="0.01" value={accountOpeningDrafts[account.id] ?? String(account.openingBalance)} onChange={(event) => setAccountOpeningDrafts((current) => ({ ...current, [account.id]: event.target.value }))} aria-label={`${account.name} starting balance`} /><button type="submit">Save</button></div>
+              <div><input id={`account-opening-${account.id}`} type="number" step="0.01" value={accountOpeningDrafts[account.id] ?? String(account.openingBalance)} onChange={(event) => setAccountOpeningDrafts((current) => ({ ...current, [account.id]: event.target.value }))} aria-label="Starting balance" /><button type="submit">Save</button></div>
             </form>
           </article>)}
           {unassignedTransactions.length > 0 && <article className={`account-card unassigned-account ${unassignedBalance < 0 ? 'negative' : ''}`}>
             <div className="account-card-heading"><span className="account-card-icon unassigned">?</span><div><strong>Unassigned entries</strong><small>{unassignedTransactions.length} older entries</small></div></div>
             <div className="account-balance"><span>Recorded net</span><strong>{formatCurrency(unassignedBalance)}</strong></div>
             <form className="account-legacy-form" onSubmit={assignUnassignedTransactions}>
-              <label>Assign these entries to<select value={legacyAssignmentDraft} onChange={(event) => setLegacyAssignmentDraft(event.target.value)}>{accounts.map((account) => <option value={account.id} key={account.id}>{account.name}</option>)}</select></label>
+              <label>Assign these entries to<select value={legacyAssignmentDraft} onChange={(event) => setLegacyAssignmentDraft(event.target.value)}>{accounts.map((account) => <option value={account.id} key={account.id} data-gujarati-preserve>{account.name}</option>)}</select></label>
               <button type="submit">Assign all older entries</button>
             </form>
           </article>}
@@ -1724,7 +1773,7 @@ export default function App({ user }) {
         </div>
         {!isForecastMonth ? <div className="cashflow-empty">
           <CalendarDays size={18} aria-hidden="true" />
-          <span>Use the month picker above to return to {new Date(`${todayKey.slice(0, 7)}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} for a live forecast.</span>
+          <span>Use the month picker above to return to {new Date(`${todayKey.slice(0, 7)}-01T00:00:00`).toLocaleDateString(getAppLocale(), { month: 'long', year: 'numeric' })} for a live forecast.</span>
         </div> : !hasCashflowData ? <div className="cashflow-empty">
           <WalletCards size={18} aria-hidden="true" />
           <span>Add this month’s income or expenses, or set up a recurring schedule, to start your cash-flow forecast.</span>
@@ -1802,7 +1851,7 @@ export default function App({ user }) {
                 <span className={`goal-deadline ${daysLeft !== null && daysLeft < 0 && !completed ? 'past-due' : ''}`}>{deadlineLabel}</span>
                 <button className="goal-delete" type="button" onClick={() => deleteGoal(goal.id)} aria-label={`Delete ${goal.title}`}><Trash2 size={14} aria-hidden="true" /></button>
               </div>
-              <h3>{goal.title}</h3>
+              <h3 data-gujarati-preserve>{goal.title}</h3>
               <div className="goal-progress-layout">
                 <div className="goal-amount-copy"><span>Saved so far</span><strong>{formatCurrency(savedAmount)}</strong><small>{remaining > 0 ? `${formatCurrency(remaining)} to go` : 'Target achieved'}</small></div>
                 <div className="goal-ring" style={{ '--goal-progress': `${progress}%` }}><span>{progress}%</span></div>
@@ -1872,7 +1921,7 @@ export default function App({ user }) {
               const dueClass = !rule.active ? 'paused' : isPaid ? 'paid' : isCurrentMonth && daysUntil < 0 ? 'overdue' : isCurrentMonth && daysUntil <= 7 ? 'soon' : 'scheduled';
               return <article className={`recurring-item ${!rule.active ? 'paused' : ''}`} key={rule.id}>
                 <div className="recurring-item-icon" style={{ '--category-color': categoryColors[rule.category] ?? '#7c88d9' }}><CategoryIcon size={17} aria-hidden="true" /></div>
-                <div className="recurring-details"><strong>{rule.title}</strong><small>{rule.category} / {accountName(rule.accountId ?? 'cash')} / Due {displayDate(dueDate)}</small></div>
+                <div className="recurring-details"><strong data-gujarati-preserve>{rule.title}</strong><small>{rule.category} / <span data-gujarati-preserve>{accountName(rule.accountId ?? 'cash')}</span> / Due {displayDate(dueDate)}</small></div>
                 <strong className={rule.type === 'income' ? 'income-text' : 'expense-text'}>{rule.type === 'income' ? '+' : '-'}{formatCurrency(rule.amount)}</strong>
                 <span className={`recurring-status ${dueClass}`}>{isPaid && <Check size={12} aria-hidden="true" />}{dueLabel}</span>
                 {rule.active && !isPaid && <button className="recurring-mark" type="button" onClick={() => markRecurringPaid(rule)}>{rule.type === 'income' ? 'Mark received' : 'Mark paid'}</button>}
@@ -1898,11 +1947,11 @@ export default function App({ user }) {
             <label>Date<input name="date" value={form.date} onChange={handleChange} type="date" min={`${selectedMonth}-01`} max={`${selectedMonth}-${String(lastDayOfMonth(selectedMonth)).padStart(2, '0')}`} required /></label>
             <label>Type<select name="type" value={form.type} onChange={handleChange}><option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer between accounts</option></select></label>
             {form.type === 'transfer' ? <>
-              <label>From account<select name="fromAccountId" value={form.fromAccountId} onChange={handleChange} required>{accounts.map((account) => <option value={account.id} key={account.id} disabled={account.id === form.toAccountId}>{account.name}</option>)}</select></label>
-              <label>To account<select name="toAccountId" value={form.toAccountId} onChange={handleChange} required>{accounts.map((account) => <option value={account.id} key={account.id} disabled={account.id === form.fromAccountId}>{account.name}</option>)}</select></label>
+              <label>From account<select name="fromAccountId" value={form.fromAccountId} onChange={handleChange} required>{accounts.map((account) => <option value={account.id} key={account.id} disabled={account.id === form.toAccountId} data-gujarati-preserve>{account.name}</option>)}</select></label>
+              <label>To account<select name="toAccountId" value={form.toAccountId} onChange={handleChange} required>{accounts.map((account) => <option value={account.id} key={account.id} disabled={account.id === form.fromAccountId} data-gujarati-preserve>{account.name}</option>)}</select></label>
             </> : <>
               <label>Category<select name="category" value={form.category} onChange={handleChange}>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
-              <label>Account<select name="accountId" value={form.accountId} onChange={handleChange} required><option value="">Choose an account</option>{accounts.map((account) => <option value={account.id} key={account.id}>{account.name}</option>)}</select></label>
+              <label>Account<select name="accountId" value={form.accountId} onChange={handleChange} required><option value="">Choose an account</option>{accounts.map((account) => <option value={account.id} key={account.id} data-gujarati-preserve>{account.name}</option>)}</select></label>
             </>}
             {!editingId && form.type !== 'transfer' && <label className="repeat-control"><input type="checkbox" checked={repeatMonthly} onChange={(event) => setRepeatMonthly(event.target.checked)} /><span><Repeat size={16} aria-hidden="true" /><span><strong>Repeat monthly</strong><small>Schedule for day {Number(form.date.slice(-2))} of each month</small></span></span></label>}
             <button className="primary-button" type="submit">{editingId ? 'Save changes' : 'Add transaction'} <ArrowRight size={16} aria-hidden="true" /></button>
@@ -2019,7 +2068,7 @@ export default function App({ user }) {
         {importPreview && <div className="csv-review">
           <div className="csv-review-heading"><div><p className="eyebrow">READY TO IMPORT</p><strong>{importPreview.fileName}</strong></div><button className="csv-cancel" type="button" onClick={() => setImportPreview(null)} aria-label="Cancel CSV import">Cancel</button></div>
           <div className="csv-counts"><span><strong>{importPreview.transactions.length}</strong> new</span><span><strong>{importPreview.duplicates}</strong> duplicates</span><span><strong>{importPreview.invalid}</strong> invalid rows</span></div>
-          {importPreview.transactions.length > 0 && <ul className="csv-preview-list">{importPreview.transactions.slice(0, 3).map((transaction) => <li key={transaction.id}><span>{transaction.date} / {transaction.title}</span><strong>{formatCurrency(transaction.amount)}</strong></li>)}</ul>}
+          {importPreview.transactions.length > 0 && <ul className="csv-preview-list">{importPreview.transactions.slice(0, 3).map((transaction) => <li key={transaction.id}><span>{transaction.date} / <span data-gujarati-preserve>{transaction.title}</span></span><strong>{formatCurrency(transaction.amount)}</strong></li>)}</ul>}
           <div className="csv-review-actions"><button className="import-confirm" type="button" onClick={confirmCsvImport} disabled={!importPreview.transactions.length}><Check size={15} aria-hidden="true" /> Import {importPreview.transactions.length} transaction{importPreview.transactions.length === 1 ? '' : 's'}</button><button className="csv-cancel" type="button" onClick={() => setImportPreview(null)}>Cancel</button></div>
         </div>}
         {visibleTransactions.length === 0 ? (
@@ -2030,12 +2079,12 @@ export default function App({ user }) {
               const CategoryIcon = categoryIcons[transaction.category] ?? Sparkles;
               return <article className="transaction-item" key={transaction.id}>
                 <div className={`transaction-icon ${transaction.type === 'transfer' ? 'transfer-icon' : ''}`} style={{ '--category-color': categoryColors[transaction.category] ?? '#7c88d9' }}>{transaction.type === 'transfer' ? <ArrowLeftRight size={17} aria-hidden="true" /> : <CategoryIcon size={17} aria-hidden="true" />}</div>
-                <div className="transaction-details"><strong>{transaction.title}</strong><small>{transaction.type === 'transfer'
-                  ? `Transfer · ${displayDate(transaction.date)} · ${accountName(transaction.fromAccountId)} → ${accountName(transaction.toAccountId)}`
-                  : `${transaction.category} · ${displayDate(transaction.date)} · ${accountName(transaction.accountId)}`}</small></div>
+                <div className="transaction-details"><strong data-gujarati-preserve>{transaction.title}</strong><small>{transaction.type === 'transfer'
+                  ? <>Transfer · {displayDate(transaction.date)} · <span data-gujarati-preserve>{accountName(transaction.fromAccountId)}</span> → <span data-gujarati-preserve>{accountName(transaction.toAccountId)}</span></>
+                  : <>{transaction.category} · {displayDate(transaction.date)} · <span data-gujarati-preserve>{accountName(transaction.accountId)}</span></>}</small></div>
                 <span className={transaction.type === 'transfer' ? 'transfer-text' : transaction.type === 'income' ? 'income-text' : 'expense-text'}>{transaction.type === 'transfer' ? '↔ ' : transaction.type === 'income' ? '+' : '−'}{formatCurrency(transaction.amount)}</span>
-                <button className="edit-btn" type="button" onClick={() => editTransaction(transaction)} aria-label={`Edit ${transaction.title}`}><Pencil size={14} aria-hidden="true" /><span>Edit</span></button>
-                <button className="delete-btn" type="button" onClick={() => removeTransaction(transaction.id)} aria-label={`Delete ${transaction.title}`}><Trash2 size={15} aria-hidden="true" /></button>
+                <button className="edit-btn" type="button" onClick={() => editTransaction(transaction)} aria-label="Edit transaction"><Pencil size={14} aria-hidden="true" /><span>Edit</span></button>
+                <button className="delete-btn" type="button" onClick={() => removeTransaction(transaction.id)} aria-label="Delete transaction"><Trash2 size={15} aria-hidden="true" /></button>
               </article>;
             })}
           </div>
@@ -2106,6 +2155,22 @@ export default function App({ user }) {
               <button type="button" className={theme === 'dark' ? 'selected' : ''} onClick={() => setUserTheme('dark')} aria-pressed={theme === 'dark'}><Moon size={16} aria-hidden="true" /> Dark</button>
               <button type="button" className={theme === 'light' ? 'selected' : ''} onClick={() => setUserTheme('light')} aria-pressed={theme === 'light'}><Sun size={16} aria-hidden="true" /> Light</button>
             </div>
+          </section>
+
+          <section className="settings-card settings-language-card" aria-labelledby="settings-language-title">
+            <div className="settings-card-copy">
+              <h3 id="settings-language-title">Language Settings</h3>
+              <p>Choose your preferred language for the whole app.</p>
+            </div>
+            <LanguageControl
+              language={language}
+              onChange={(nextLanguage) => {
+                if (nextLanguage === language) return;
+                setPreferredLanguage(nextLanguage);
+                setLanguage(nextLanguage);
+                trackActivity('settings_updated');
+              }}
+            />
           </section>
 
           <section className="settings-card" aria-labelledby="settings-currency-title">
@@ -2239,6 +2304,7 @@ export default function App({ user }) {
       <FullBackupPrintView
         selectedMonth={selectedMonth}
         theme={theme}
+        language={language}
         dateFormat={dateFormat}
         density={density}
         privacyMode={privacyMode}
@@ -2262,8 +2328,8 @@ export default function App({ user }) {
     <Footer />
   </>;
 }
-function FullBackupPrintView({ selectedMonth, theme, dateFormat, density, privacyMode, weekStart, motionPreference, currency, categories, customCategories, accounts, unassignedBalance, unassignedCount, totalAccountBalance, transactions, monthlyBudgets, categoryBudgets, recurringRules, goals }) {
-  const monthLabel = new Date(`${selectedMonth}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+function FullBackupPrintView({ selectedMonth, theme, language, dateFormat, density, privacyMode, weekStart, motionPreference, currency, categories, customCategories, accounts, unassignedBalance, unassignedCount, totalAccountBalance, transactions, monthlyBudgets, categoryBudgets, recurringRules, goals }) {
+  const monthLabel = new Date(`${selectedMonth}-01T00:00:00`).toLocaleDateString(getAppLocale(), { month: 'long', year: 'numeric' });
   const sortedTransactions = [...transactions].sort((first, second) => transactionDateKey(first.date).localeCompare(transactionDateKey(second.date)));
   const recurringNames = new Map(recurringRules.map((rule) => [rule.id, rule.title]));
   const accountNames = new Map(accounts.map((account) => [account.id, account.name]));
@@ -2279,7 +2345,7 @@ function FullBackupPrintView({ selectedMonth, theme, dateFormat, density, privac
     <header className="pdf-backup-header">
       <span className="pdf-backup-brand">ExpenseNest</span>
       <h1>Complete data backup</h1>
-      <p>Generated {new Date().toLocaleString('en-IN')} · Full account data snapshot</p>
+      <p>Generated {new Date().toLocaleString(getAppLocale())} · Full account data snapshot</p>
     </header>
     <section className="pdf-backup-overview">
       <h2>Overview</h2>
@@ -2292,6 +2358,7 @@ function FullBackupPrintView({ selectedMonth, theme, dateFormat, density, privac
         <p><span>On-screen privacy</span><strong>{privacyMode ? 'Amounts hidden' : 'Amounts visible'}</strong></p>
         <p><span>Calendar week starts</span><strong>{weekStart ? weekStart.charAt(0).toUpperCase() + weekStart.slice(1) : 'Sunday'}</strong></p>
         <p><span>Motion preference</span><strong>{motionPreference || 'System'}</strong></p>
+        <p><span>Language</span><strong>{language === 'gu' ? 'Gujarati' : 'English'}</strong></p>
         <p><span>Categories</span><strong>{categories.length}</strong></p>
         <p><span>Accounts</span><strong>{accounts.length}</strong></p>
         <p><span>Total account balance</span><strong>{formatCurrency(totalAccountBalance)}</strong></p>
@@ -2308,7 +2375,7 @@ function FullBackupPrintView({ selectedMonth, theme, dateFormat, density, privac
       <table>
         <thead><tr><th>Account</th><th>Starting balance</th><th>Balance now</th><th>Spent this month</th></tr></thead>
         <tbody>{accounts.map((account) => <tr key={account.id}>
-          <td>{account.name}</td><td>{formatCurrency(Number(account.openingBalance))}</td><td>{formatCurrency(account.balance)}</td><td>{formatCurrency(account.monthExpenses)}</td>
+          <td data-gujarati-preserve>{account.name}</td><td>{formatCurrency(Number(account.openingBalance))}</td><td>{formatCurrency(account.balance)}</td><td>{formatCurrency(account.monthExpenses)}</td>
         </tr>)}
           {unassignedCount > 0 && <tr><td>Unassigned old entries ({unassignedCount})</td><td>—</td><td>{formatCurrency(unassignedBalance)}</td><td>—</td></tr>}
         </tbody>
@@ -2328,7 +2395,7 @@ function FullBackupPrintView({ selectedMonth, theme, dateFormat, density, privac
       {transactions.length === 0 ? <p className="pdf-empty">No transactions saved.</p> : <table>
         <thead><tr><th>Date</th><th>Description</th><th>Type</th><th>Category</th><th>Amount</th><th>Account</th><th>Schedule</th></tr></thead>
         <tbody>{sortedTransactions.map((transaction, index) => <tr key={transaction.id ?? `${transaction.date}-${index}`}>
-          <td>{displayDate(transaction.date)}</td><td>{transaction.title}</td><td>{transaction.type}</td><td>{transaction.type === 'transfer' ? 'Transfer' : transaction.category}</td><td>{formatCurrency(Number(transaction.amount))}</td><td>{transaction.type === 'transfer' ? `${accountNames.get(transaction.fromAccountId) ?? 'Unknown'} → ${accountNames.get(transaction.toAccountId) ?? 'Unknown'}` : accountNames.get(transaction.accountId) ?? 'Unassigned'}</td><td>{transaction.recurringRuleId ? recurringNames.get(transaction.recurringRuleId) ?? 'Recurring' : '—'}</td>
+          <td>{displayDate(transaction.date)}</td><td data-gujarati-preserve>{transaction.title}</td><td>{transaction.type}</td><td>{transaction.type === 'transfer' ? 'Transfer' : transaction.category}</td><td>{formatCurrency(Number(transaction.amount))}</td><td data-gujarati-preserve>{transaction.type === 'transfer' ? `${accountNames.get(transaction.fromAccountId) ?? 'Unknown'} → ${accountNames.get(transaction.toAccountId) ?? 'Unknown'}` : accountNames.get(transaction.accountId) ?? 'Unassigned'}</td><td>{transaction.recurringRuleId ? recurringNames.get(transaction.recurringRuleId) ?? 'Recurring' : '—'}</td>
         </tr>)}</tbody>
       </table>}
     </section>
@@ -2338,7 +2405,7 @@ function FullBackupPrintView({ selectedMonth, theme, dateFormat, density, privac
       {budgetRows.length === 0 ? <p className="pdf-empty">No monthly budgets saved.</p> : <table>
         <thead><tr><th>Month</th><th>Budget limit</th></tr></thead>
         <tbody>{budgetRows.map(([month, amount]) => <tr key={month}>
-          <td>{new Date(`${month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</td><td>{formatCurrency(Number(amount))}</td>
+          <td>{new Date(`${month}-01T00:00:00`).toLocaleDateString(getAppLocale(), { month: 'long', year: 'numeric' })}</td><td>{formatCurrency(Number(amount))}</td>
         </tr>)}</tbody>
       </table>}
     </section>
@@ -2348,7 +2415,7 @@ function FullBackupPrintView({ selectedMonth, theme, dateFormat, density, privac
       {categoryBudgetRows.length === 0 ? <p className="pdf-empty">No category limits saved.</p> : <table>
         <thead><tr><th>Month</th><th>Category</th><th>Limit</th></tr></thead>
         <tbody>{categoryBudgetRows.map(({ month, category, amount }) => <tr key={`${month}-${category}`}>
-          <td>{new Date(`${month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</td><td>{category}</td><td>{formatCurrency(Number(amount))}</td>
+          <td>{new Date(`${month}-01T00:00:00`).toLocaleDateString(getAppLocale(), { month: 'long', year: 'numeric' })}</td><td>{category}</td><td>{formatCurrency(Number(amount))}</td>
         </tr>)}</tbody>
       </table>}
     </section>
@@ -2358,7 +2425,7 @@ function FullBackupPrintView({ selectedMonth, theme, dateFormat, density, privac
       {recurringRules.length === 0 ? <p className="pdf-empty">No recurring schedules saved.</p> : <table>
         <thead><tr><th>Name</th><th>Type</th><th>Category</th><th>Amount</th><th>Account</th><th>Day</th><th>Starts</th><th>Status</th></tr></thead>
         <tbody>{recurringRules.map((rule, index) => <tr key={rule.id ?? `${rule.title}-${index}`}>
-          <td>{rule.title}</td><td>{rule.type}</td><td>{rule.category}</td><td>{formatCurrency(Number(rule.amount))}</td><td>{accountNames.get(rule.accountId) ?? 'Cash'}</td><td>{rule.dayOfMonth}</td><td>{rule.startMonth}</td><td>{rule.active ? 'Active' : 'Paused'}</td>
+          <td data-gujarati-preserve>{rule.title}</td><td>{rule.type}</td><td>{rule.category}</td><td>{formatCurrency(Number(rule.amount))}</td><td data-gujarati-preserve>{accountNames.get(rule.accountId) ?? 'Cash'}</td><td>{rule.dayOfMonth}</td><td>{rule.startMonth}</td><td>{rule.active ? 'Active' : 'Paused'}</td>
         </tr>)}</tbody>
       </table>}
     </section>
@@ -2368,7 +2435,7 @@ function FullBackupPrintView({ selectedMonth, theme, dateFormat, density, privac
       {goals.length === 0 ? <p className="pdf-empty">No savings goals saved.</p> : <table>
         <thead><tr><th>Goal</th><th>Saved</th><th>Target</th><th>Progress</th><th>Deadline</th><th>Created</th></tr></thead>
         <tbody>{goals.map((goal, index) => <tr key={goal.id ?? `${goal.title}-${index}`}>
-          <td>{goal.title}</td><td>{formatCurrency(Number(goal.savedAmount))}</td><td>{formatCurrency(Number(goal.targetAmount))}</td><td>{Math.round((Number(goal.savedAmount) / Number(goal.targetAmount)) * 100)}%</td><td>{goal.deadline ? displayDate(goal.deadline) : 'Not set'}</td><td>{goal.createdAt ? displayDate(goal.createdAt) : '—'}</td>
+          <td data-gujarati-preserve>{goal.title}</td><td>{formatCurrency(Number(goal.savedAmount))}</td><td>{formatCurrency(Number(goal.targetAmount))}</td><td>{Math.round((Number(goal.savedAmount) / Number(goal.targetAmount)) * 100)}%</td><td>{goal.deadline ? displayDate(goal.deadline) : 'Not set'}</td><td>{goal.createdAt ? displayDate(goal.createdAt) : '—'}</td>
         </tr>)}</tbody>
       </table>}
     </section>
@@ -2558,7 +2625,7 @@ function DailySpendingCalendar({ month, monthLabel, transactions, accountName, c
           </div>
           {selectedDateTransactions.length > 0 ? <ul className="calendar-day-transactions">
             {selectedDateTransactions.slice(0, 4).map((transaction, index) => <li key={transaction.id ?? `${transaction.title}-${index}`}>
-              <span><strong>{transaction.title}</strong><small>{transaction.type === 'transfer' ? `Transfer · ${accountName(transaction.fromAccountId)} → ${accountName(transaction.toAccountId)}` : transaction.category}</small></span>
+              <span><strong data-gujarati-preserve>{transaction.title}</strong><small>{transaction.type === 'transfer' ? <>Transfer · <span data-gujarati-preserve>{accountName(transaction.fromAccountId)}</span> → <span data-gujarati-preserve>{accountName(transaction.toAccountId)}</span></> : transaction.category}</small></span>
               <strong className={transaction.type === 'transfer' ? 'calendar-transfer-total' : transaction.type === 'income' ? 'calendar-income-total' : 'calendar-expense-total'}>{transaction.type === 'transfer' ? '↔ ' : transaction.type === 'income' ? '+' : '−'}{formatCurrency(Number(transaction.amount))}</strong>
             </li>)}
           </ul> : <p className="calendar-no-transactions">No transactions recorded on this day.</p>}

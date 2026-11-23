@@ -102,7 +102,7 @@ export default function AdminLogin({ onAdminSuccess, theme, onThemeChange }) {
                 <input
                   id="admin-email"
                   type="email"
-                  placeholder="admin@example.com"
+                  placeholder="Enter your email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   autoComplete="username"

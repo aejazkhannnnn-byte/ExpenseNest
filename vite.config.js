@@ -12,7 +12,7 @@ export default defineConfig({
       manifest: {
         name: 'ExpenseNest - Expense Tracker',
         short_name: 'ExpenseNest',
-        description: 'Manage your daily expenses and income with ExpenseNest.',
+        description: 'Track your income and expenses, manage budgets, and plan your financial goals.',
         theme_color: '#061329',
         background_color: '#061329',
         display: 'standalone',

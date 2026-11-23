@@ -18,6 +18,7 @@ import {
 import { supabase } from './supabase';
 import { formatCurrency } from './currency.js';
 import { formatAppDate } from './dateFormatting.js';
+import { getAppLocale } from './gujaratiLocalization.js';
 
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -546,7 +547,7 @@ export default function FamilySharing({ user, currency, onActivity }) {
   const balance = totalIncome - totalExpenses;
 
   const formatMoney = (value) => formatCurrency(value, currency);
-  const reportMonthLabel = new Date(`${memberReportMonth}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const reportMonthLabel = new Date(`${memberReportMonth}-01T00:00:00`).toLocaleDateString(getAppLocale(), { month: 'long', year: 'numeric' });
   const activeMemberIds = new Set(members.map((member) => member.user_id));
   const memberIds = [...new Set([
     ...members.map((member) => member.user_id),
@@ -645,7 +646,7 @@ export default function FamilySharing({ user, currency, onActivity }) {
               >
                 <span>
                   <UsersRound size={17} />
-                  {family.name}
+                  <span data-gujarati-preserve>{family.name}</span>
                 </span>
                 <small>
                   {family.owner_id === user?.id ? 'Owner' : 'Member'}
@@ -718,7 +719,7 @@ export default function FamilySharing({ user, currency, onActivity }) {
                         <strong>
                           {member.user_id === user?.id
                             ? 'You'
-                            : `Member ${member.user_id.slice(0, 8)}`}
+                            : <span data-gujarati-preserve>{`Member ${member.user_id.slice(0, 8)}`}</span>}
                         </strong>
                         <small>{member.user_id === user?.id ? 'Your account' : 'Family account'}</small>
                       </div>
@@ -1012,13 +1013,13 @@ export default function FamilySharing({ user, currency, onActivity }) {
 
                             <div className="transaction-info">
                               <strong>{item.category}</strong>
-                              <span>{item.description || 'No description'}</span>
+                              <span data-gujarati-preserve={Boolean(item.description)}>{item.description || 'No description'}</span>
                               <small>
                                 {displayTransactionDate(item.transaction_date)}
                                 {' · '}
                                 {isMine
                                   ? 'Added by You'
-                                  : `Member ${item.created_by?.slice(0, 8)}`}
+                                  : <span data-gujarati-preserve>{`Member ${item.created_by?.slice(0, 8)}`}</span>}
                               </small>
                             </div>
                           </div>

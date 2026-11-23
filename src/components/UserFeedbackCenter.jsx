@@ -366,7 +366,7 @@ function UserFeedbackThread({ item, open, unread, sending, onToggle, onReply }) 
         <time dateTime={item.created_at}><Clock3 size={12} />{formatAppDateTime(item.created_at, { day: 'numeric', month: 'short', year: 'numeric' })}</time>
       </div>
       <div className="user-feedback-entry-meta"><span>{CATEGORY_LABELS[item.category] || 'General'}</span><span>#{String(item.id).slice(0, 8)}</span></div>
-      <p className="user-feedback-message">{item.message}</p>
+      <p className="user-feedback-message" data-gujarati-preserve>{item.message}</p>
       <button type="button" className="user-feedback-thread-toggle" onClick={onToggle} aria-expanded={open}>
         <MessageCircle size={14} />
         <span>{open ? 'Hide conversation' : `Conversation · ${(item.replies || []).length} ${(item.replies || []).length === 1 ? 'reply' : 'replies'}`}</span>
@@ -377,12 +377,12 @@ function UserFeedbackThread({ item, open, unread, sending, onToggle, onReply }) 
         <div className="user-feedback-thread">
           <div className="user-feedback-thread-message from-user">
             <div><strong>You</strong><time dateTime={item.created_at}>{formatAppDateTime(item.created_at, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</time></div>
-            <p>{item.message}</p>
+            <p data-gujarati-preserve>{item.message}</p>
           </div>
           {(item.replies || []).map((reply) => (
             <div className={`user-feedback-thread-message${reply.author_role === 'admin' ? ' from-support' : ' from-user'}`} key={reply.id}>
               <div><strong>{reply.author_role === 'admin' ? 'ExpenseNest support' : 'You'}</strong><time dateTime={reply.created_at}>{formatAppDateTime(reply.created_at, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</time></div>
-              <p>{reply.message}</p>
+              <p data-gujarati-preserve>{reply.message}</p>
             </div>
           ))}
           <form className="user-feedback-thread-reply" onSubmit={submitReply}>

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+Gujarati:wght@400;500;600;700&display=swap');
 
 :root {
   --font-ui: 'DM Sans', 'Segoe UI', sans-serif;
@@ -18,9 +18,10 @@
   -moz-osx-font-smoothing: grayscale;
   font-optical-sizing: auto;
 }
+html[data-language='gu'] { --font-ui: 'Noto Sans Gujarati', 'Nirmala UI', 'Shruti', 'DM Sans', 'Segoe UI', sans-serif; --font-display: var(--font-ui); }
 html { font-family: var(--font-ui); scroll-behavior: smooth; scroll-padding-top: 125px; }
 body, button, input, select, textarea { font-family: var(--font-ui); }
-body { font-size: 14px; }
+body { font-size: 15px; }
 button, input, select, textarea { font-weight: var(--weight-regular); }
 h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: var(--weight-semibold); line-height: 1.2; }
 .summary-card h2, .accounts-total > strong, .account-balance > strong,
@@ -1359,6 +1360,17 @@ html[data-theme='dark'] .section-nav a.active svg { color: #8ee0ce; }
 .settings-theme-options { display: inline-flex; width: fit-content; gap: 4px; padding: 4px; border: 1px solid #e4e8f1; border-radius: 10px; background: #f0f2f8; }
 .settings-theme-options button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 0 11px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #69758d; cursor: pointer; font-size: 11px; font-weight: 500; }
 .settings-theme-options button.selected { border-color: #e2e6f0; background: #fff; box-shadow: 0 2px 5px rgb(36 47 78 / 7%); color: #4658c1; font-weight: 600; }
+.language-control-wrap { display: flex; width: 100%; }
+.language-control { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; width: min(100%, 360px); padding: 4px; border: 1px solid #e4e8f1; border-radius: 10px; background: #f0f2f8; }
+.language-control button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 42px; padding: 5px 12px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #69758d; cursor: pointer; font-size: 13px; font-weight: 500; transition: background .18s ease, color .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.language-control button.selected { border-color: #e2e6f0; background: #fff; box-shadow: 0 2px 5px rgb(36 47 78 / 7%); color: #4658c1; font-weight: 650; }
+.language-control button:focus-visible { outline: 3px solid rgb(92 105 211 / 25%); outline-offset: 2px; }
+html[data-theme='dark'] .language-control { border-color: #2b3951; background: #111b2b; }
+html[data-theme='dark'] .language-control button { color: #a2b0c4; }
+html[data-theme='dark'] .language-control button.selected { border-color: #374963; background: #1b2940; color: #b9c5ff; }
+html[data-theme='light'] .language-control { border-color: #e4e8f1; background: #f0f2f8; }
+html[data-theme='light'] .language-control button { color: #69758d; }
+html[data-theme='light'] .language-control button.selected { border-color: #e2e6f0; background: #fff; color: #4658c1; }
 .settings-currency-field { display: grid; gap: 6px; color: #738097; font-size: 10px; font-weight: 600; }
 .settings-currency-field select { width: 100%; min-height: 39px; padding: 8px 10px; font-size: 12px; }
 .settings-currency-note { color: #8a95a8; font-size: 10px; line-height: 1.5; }
@@ -1564,6 +1576,20 @@ html[data-theme='dark'] .user-activity-row-icon.family { background: #16363a; co
   .user-activity-row-icon { width: 30px; height: 30px; }
   .user-activity-row time { align-items: flex-end; flex-direction: column; gap: 2px; font-size: 8px; }
 }
+
+html[lang='gu'] { font-family: 'Noto Sans Gujarati', 'Nirmala UI', 'Shruti', sans-serif; }
+html[lang='gu'] body { font-size: 15px; line-height: 1.65; overflow-wrap: anywhere; }
+html[lang='gu'] button, html[lang='gu'] input, html[lang='gu'] select, html[lang='gu'] textarea { font-family: 'Noto Sans Gujarati', 'Nirmala UI', 'Shruti', sans-serif; }
+html[lang='gu'] h1, html[lang='gu'] h2, html[lang='gu'] h3, html[lang='gu'] h4 { line-height: 1.35; }
+html[lang='gu'] .section-nav a, html[lang='gu'] .admin-menu, html[lang='gu'] .theme-toggle { white-space: normal; line-height: 1.4; }
+html[lang='gu'] :is(small, .eyebrow, .section-nav-current-copy small, .summary-card p, .summary-card small) { font-size: max(11px, 1em); }
+html[lang='gu'] :is(.header-note, .transaction-meta, .transaction-info span, .activity-row-copy small, .calendar-day-amount, .calendar-income-mark) { font-size: max(12px, 1em); }
+html[lang='gu'] :is(.header-actions, .section-nav-inner, .filter-row, .transaction-actions, .admin-topbar-actions) { flex-wrap: wrap; }
+html[lang='gu'] :is(.panel, .admin-panel, .family-card, .family-dashboard, .user-feedback-panel) { min-width: 0; overflow-wrap: anywhere; }
+html[lang='gu'] .admin-layout { font-size: 15px; }
+html[lang='gu'] .admin-layout button { font-size: max(12px, 1em); }
+html[lang='gu'] .admin-layout :is(input, select) { min-height: 40px; font-size: max(14px, 1em); }
+html[lang='gu'] .admin-layout :is(small, .admin-panel-kicker, .admin-sidebar-label, .admin-menu-badge) { font-size: max(11px, 1em); }
 
 /* Product-wide visual refinement */
 html { background: var(--app-bg); color: var(--app-text); }
